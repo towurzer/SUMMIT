@@ -1,2 +1,2 @@
-# ALPINE
-ALPINE - ASCII Learning with Petite Input and Null(pointer) Exceptions
+# SUMMIT
+- Symbolic Unified Model for Multilingual Inference and Translation
