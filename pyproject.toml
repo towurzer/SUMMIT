@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "summit"
+version = "0.1.0"
+description = "project for the machine learning course"
+authors = ["tobi", "markus", "klemens", "jakob"]#"Your Name <you@example.com>"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
