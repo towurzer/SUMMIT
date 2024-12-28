@@ -1,1 +1,1 @@
-print('Change is necessary')
+pip install torch torchvision torchaudio
