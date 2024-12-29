@@ -152,7 +152,8 @@ class MultiHeadAttentionSegment(nn.Module):
 
         The input queries, keys, and values are transformed into subspaces, scaled, and
         combined through attention weights computed using dot-product attention. The results
-        are concatenated and passed through a final linear layer to produce the output.
+        are concatenated and transformed back using another matrix multiplication with the weight Matrix W_o,
+        to get a matrix back, that has the same format as the one given as an input
         """
     def __init__(self, model_dimensions: int, head_count: int, dropout: float):
         """
@@ -330,3 +331,50 @@ class LayerAdditionAndNormalization(nn.Module):
 
         # Scale shift and return
         return self.gamma * x_dash + self.bias
+
+
+class FeedForwardLayer(nn.Module):
+    """
+    FeedForwardLayer module
+    ((batch_size, sequence_length, model_dim) -> (batch_size, sequence_length, model_dim))
+
+    This module applies two linear transformations separated by a ReLU activation
+    and a dropout layer. It serves as a position-wise feed-forward network
+    to process individual token representations independently.
+    """
+    def __init__(self, dimensions_model: int, dimensions_feed_forward_layer: int, dropout: float):
+        """
+        Initialize the FeedForwardLayer module.
+
+        Args:
+            dimensions_model (int): Dimensionality of the input and output features.
+            dimensions_feed_forward_layer (int): Dimensionality of the intermediate feed-forward layer.
+            dropout (float): Dropout probability applied after the activation.
+        """
+        super().__init__()
+        # removed to save memory
+        # self.dimensions_model = dimensions_model
+        # self.dimensions_feed_forward_layer = dimensions_feed_forward_layer
+
+        # First linear transformation: maps input features to feed-forward dimension
+        self.linear_1 = nn.Linear(dimensions_model, dimensions_feed_forward_layer)  # W1 and B1 in Paper
+        # Second linear transformation: maps back to original model dimension
+        self.linear_2 = nn.Linear(dimensions_feed_forward_layer, dimensions_model)  # W2 and B2 in Paper
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, input_tensor):
+        """
+                Forward pass to process input through the feed-forward layer.
+
+                Args:
+                    input_tensor (Tensor): Input tensor of shape (batch_size, seq_length, model_dim).
+
+                Returns:
+                    Tensor: Output tensor of the same shape as the input tensor
+                            (batch_size, seq_length, model_dim).
+        """
+        input_tensor = self.linear_1(input_tensor)
+        input_tensor = torch.relu(input_tensor)
+        input_tensor = self.dropout(input_tensor)
+        return self.linear_2(input_tensor)
