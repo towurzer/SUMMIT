@@ -6,16 +6,31 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, random_split
 from datasets import load_dataset 
 
-#split='train' is chosen because of no split being loaded when no split is specified in this case due to something 
-#train is 1m lines while test and val are 2k each) https://huggingface.co/datasets/Helsinki-NLP/opus-100/viewer/de-en/train
-ds_raw = load_dataset('opus_books', 'de-en', split='train')
+#More things to be added here later for the model and training
+def get_config():
+    return {
+        "datasource": 'opus_books',
+        "lang_src": "de",
+        "lang_tgt": "en",
+    }
 
-# Last line has to be written like this because the lengths otherwise do not match exactly
-train_ds_size = int(0.8 * len(ds_raw))  
-validation_ds_size = int(0.1 * len(ds_raw))  
-test_ds_size = len(ds_raw) - train_ds_size - validation_ds_size  
+def get_ds(config):
+#split='train' is chosen because of errors occuring or the splits not being loaded when choosing another
+#('train' is 1m lines while test and val are 2k each) https://huggingface.co/datasets/Helsinki-NLP/opus-100/viewer/de-en/train
+    ds_raw = load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
 
-train_ds_raw, validation_ds_raw, test_ds_raw = random_split(ds_raw, [train_ds_size, validation_ds_size, test_ds_size])
+# Last line has to be written like this because the lengths otherwise do not match exactly and cause an error (splits do not overlap by function)
+    train_ds_size = int(0.8 * len(ds_raw))  
+    validation_ds_size = int(0.1 * len(ds_raw))  
+    test_ds_size = len(ds_raw) - train_ds_size - validation_ds_size  
+
+#Splitting into train/val/test datasets
+    train_ds_raw, validation_ds_raw, test_ds_raw = random_split(ds_raw, [train_ds_size, validation_ds_size, test_ds_size])
+
+    return train_ds_raw, validation_ds_raw, test_ds_raw
+
+
+train_ds_raw, validation_ds_raw, test_ds_raw = get_ds(get_config())
 
 #Data points printed are the amount of sentence pairs
 print(f"Train dataset size: {len(train_ds_raw)}")
