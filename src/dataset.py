@@ -23,7 +23,7 @@ print(f"Validation dataset size: {len(validation_ds_raw)}")
 print(f"Test dataset size: {len(test_ds_raw)}")
 
 #Just checking it is really loaded
-for i in range(5):
+for i in range(10):
     print(f"{i+1}: {train_ds_raw[i]}")
 
 
