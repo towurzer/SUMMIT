@@ -199,6 +199,9 @@ class MultiHeadAttentionSegment(nn.Module):
         Returns:
             Tensor: Weighted sum of values (attention output).
             Tensor: Attention scores (softmax probabilities).
+
+        Note:
+            - for explanation of mask look in the encoder and decoder block - docstring
         """
         dimension_per_head = query.shape[-1]
 
@@ -278,9 +281,10 @@ class MultiHeadAttentionSegment(nn.Module):
         return self.w_o(attention_output)
 
 
-class LayerAdditionAndNormalization(nn.Module):
+class LayerNormalization(nn.Module):
     """
     Module for applying layer normalization to an input tensor.
+    Used in Add and Norm Module
     (batch_size, sequence_length, features), (batch_size, sequence_length, features)
 
     Note:
@@ -341,6 +345,11 @@ class FeedForwardLayer(nn.Module):
     This module applies two linear transformations separated by a ReLU activation
     and a dropout layer. It serves as a position-wise feed-forward network
     to process individual token representations independently.
+
+    This Layer is used in addition to a self attention block.
+    While the latter captures relationships between tokens, the feed-forward
+    layer processes each token independently. This adds non-linearity and depth to the model,
+    enabling it to extract more information from the input.
     """
     def __init__(self, dimensions_model: int, dimensions_feed_forward_layer: int, dropout: float):
         """
@@ -378,3 +387,46 @@ class FeedForwardLayer(nn.Module):
         input_tensor = torch.relu(input_tensor)
         input_tensor = self.dropout(input_tensor)
         return self.linear_2(input_tensor)
+
+
+class AddAndNormLayer(nn.Module):
+    """
+    Addition and Normalization Layer using a residual connection by skipping the sublayer computation,
+    adding its output back to the original input, and applying layer normalization.
+    ((batch_size, sequence_length, features) -> (batch_size, sequence_length, features))
+
+    Residual connections allow for the effective training of much deeper networks by addressing
+    the gradient flow issues and making it easier for the network to learn identity mappings.
+    This enables the model to be very expressiv and capable of learning more complex functions.
+    """
+    def __init__(self, features: int, dropout: float):
+        """
+        Initialize the AddAndNormLayer module.
+
+        Args:
+            features (int): Dimensionality of the input and output features.
+            dropout (float): Dropout probability applied to the sublayer output.
+        """
+        super().__init__()
+        self.dropout = nn.Dropout(dropout)
+
+        self.normalization_layer = LayerNormalization(features)
+
+    def forward(self, residual, sublayer_function):
+        """
+        Forward pass to apply residual connection and normalization.
+
+        Args:
+            residual (Tensor): Input tensor (residual connection) of shape
+                                (batch_size, seq_length, features).
+            sublayer_function (Callable): A function representing the sublayer
+                                            (e.g., attention or feed-forward).
+
+        Returns:
+            Tensor: Output tensor of shape (batch_size, seq_length, features).
+        """
+        sublayer_output = sublayer_function(residual)  # compute sublayer
+        sublayer_output = self.dropout(sublayer_output)
+        residual_added_output = residual + sublayer_output  # add ...
+        return self.normalization_layer(residual_added_output)  # ... & norm
+    
