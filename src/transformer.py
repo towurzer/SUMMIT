@@ -201,7 +201,7 @@ class MultiHeadAttentionSegment(nn.Module):
         """
         dimension_per_head = query.shape[-1]
 
-        key = key.transpose(-2, -1) # Shape: [batch_size, head_count, dim_per_head, seq_len]
+        key = key.transpose(-2, -1)  # Shape: [batch_size, head_count, dim_per_head, seq_len]
         attention_scores = (query @ key)  # Shape: [batch_size, head_count, seq_len, seq_len]
 
         attention_scores = attention_scores / math.sqrt(dimension_per_head)  # scaled attention scores
@@ -213,7 +213,7 @@ class MultiHeadAttentionSegment(nn.Module):
         # Apply softmax to convert attention scores into probabilities
         attention_scores = attention_scores.softmax(dim=-1)
 
-        if dropout is not None: # needed since dropout gets handed over as nn.Dropout and not float
+        if dropout is not None:  # needed since dropout gets handed over as nn.Dropout and not float
             attention_scores = dropout(attention_scores)
 
         # Compute the weighted sum of the value vectors using the dot product with the attention scores
@@ -275,3 +275,58 @@ class MultiHeadAttentionSegment(nn.Module):
 
         # Apply the output projection and return
         return self.w_o(attention_output)
+
+
+class LayerAdditionAndNormalization(nn.Module):
+    """
+    Module for applying layer normalization to an input tensor.
+    (batch_size, sequence_length, features), (batch_size, sequence_length, features)
+
+    Note:
+        - Layer Normalization: Instead of normalizing across a batch, the normalization is done across features.
+        For each individual sample the normalization is computed across all features.
+        Another point, is that in Layer Normalization, zeros in an individual sample do not affect the normalization
+        of other values in that sample, because the normalization process is done independently for each sample,
+        and the presence of zeros doesn't cause a shift in the other values
+        (other than their own relative contribution to the mean and variance).
+    """
+    def __init__(self, features: int, epsilon: float = 10e-6):
+        """
+        Initialize the LayerAdditionAndNormalization module.
+
+        Args:
+            features (int): The size of the feature dimension for the input tensor.
+            epsilon (float): A small constant added to the denominator to prevent division by zero.
+        """
+        super().__init__()
+        self.epsilon = epsilon  # Small constant to prevent division by zero during normalization
+        self.gamma = nn.Parameter(torch.ones(features))  # creates a learnable parameter, which starts out as all ones
+        self.bias = nn.Parameter(torch.zeros(features))  # creates a learnable parameter, which starts out as all zeros
+
+    def forward(self, x):
+        """
+        Forward pass for layer normalization.
+
+        Args:
+            x (Tensor): Input tensor of shape (batch_size, seq_length, features).
+                represents a sequence or batch of data.
+
+        Returns:
+            Tensor: Output tensor of the same shape as input,
+                after applying normalization and affine transformation.
+
+        Note:
+            - used the standard deviation instead of the root of the variance since I wasn't sure
+            whether I should use a biased or unbiased variance, and the std is äquivalent the root of the std.
+            And since epsilon is << the root of var+epsilon is not that far off the std + epsilon
+        """
+        # Calculate the mean of the input tensor along the feature dimension (dim=-1) and keeps the dimensions intact
+        mean = x.mean(dim=-1, keepdim=True)
+        standard_deviation = x.std(dim=-1, keepdim=True)  # calculates the standard deviation of x
+
+        # Normalize the input tensor: (x - mean) / (std + epsilon)
+        # Epsilon ensures numerical stability to prevent division by zero
+        x_dash = (x - mean) / (standard_deviation + self.eps) + self.bias
+
+        # Scale shift and return
+        return self.gamma * x_dash + self.bias
