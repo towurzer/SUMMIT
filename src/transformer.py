@@ -26,6 +26,7 @@ class InputEmbeddings(nn.Module):
                  [ 0.11, -0.08,  0.39, -0.27],
                  [-0.20,  0.14,  0.07, -0.03]]]) * sqrt(4)
     """
+
     def __init__(self, model_dimensions: int, vocab_size: int):
         """
         Initialize the InputEmbeddings module.
@@ -74,19 +75,7 @@ class PositionalEncodings(nn.Module):
 
     The goal is to inject positional information into the model, as Transformer models do not
     inherently understand token order since it processes all the tokens parallely.
-
-    Example:
-    Given:
-        model_dimensions = 2
-        max_sequence_length  = 1
-        dropout = 0.0
-        input_embeddings = [[0.1, 0.2]]  # shape: (1, 1, 2)
-        (positional_encodings = [[0.01, 0.02]]  # shape: (1, 1, 2)) <- e.g. would be calculated in __init__
-
-    The output will be a tensor of shape (1, 1, 2):
-        tensor([[[0.11, 0.24]]])  # (0.1 + 0.01, 0.2 + 0.02)
     """
-    # TODO: Add Example
     def __init__(self, model_dimensions: int, max_sequence_length: int, dropout: float):
         """
         Initialize the PositionalEncodings module.
@@ -150,3 +139,139 @@ class PositionalEncodings(nn.Module):
 
         # Apply dropout
         return self.dropout(input_embeddings)
+
+
+class MultiHeadAttentionSegment(nn.Module):
+    """
+        Module to perform multi-head attention.
+        ((batch_size, sequence_length, model_dimensions) -> (batch_size, sequence_length, model_dimensions))
+
+        This module implements multi-head attention, which allows the model to attend
+        to information from different representation subspaces. By splitting the attention
+        mechanism into multiple heads, the model can focus on different aspects of the input.
+
+        The input queries, keys, and values are transformed into subspaces, scaled, and
+        combined through attention weights computed using dot-product attention. The results
+        are concatenated and passed through a final linear layer to produce the output.
+        """
+    def __init__(self, model_dimensions: int, head_count: int, dropout: float):
+        """
+        Initialize the MultiHeadAttentionSegment module.
+
+        Args:
+            model_dimensions (int): Total number of dimensions in the input embeddings.
+            head_count (int): Number of attention heads.
+            dropout (float): Dropout probability applied to the attention weights.
+        """
+        super().__init__()
+
+        self.model_dimensions = model_dimensions
+        self.head_count = head_count
+        assert model_dimensions % head_count == 0, "ERROR!: dimension of model are not divisible by number of heads"
+
+        # Compute the dimension of each attention head
+        self.dimension_per_head = model_dimensions // head_count
+
+        # Define linear transformations for query, key, value, and output projection
+        self.w_q = nn.Linear(model_dimensions, model_dimensions)
+        self.w_k = nn.Linear(model_dimensions, model_dimensions)
+        self.w_v = nn.Linear(model_dimensions, model_dimensions)
+        self.w_o = nn.Linear(model_dimensions, model_dimensions)
+
+        self.dropout = nn.Dropout(dropout)
+
+        # Placeholder for storing attention scores
+        self.attention_scores = None
+
+    @staticmethod
+    def calculate_attention(query, key, value, mask, dropout: nn.Dropout):
+        """
+        Compute scaled dot-product attention.
+
+        Args:
+            query (Tensor): Query tensor of shape (batch_size, head_count, seq_len, dim_per_head).
+            key (Tensor): Key tensor of shape (batch_size, head_count, seq_len, dim_per_head).
+            value (Tensor): Value tensor of shape (batch_size, head_count, seq_len, dim_per_head).
+            mask (Tensor or None): Mask tensor of shape (batch_size, 1, seq_len, seq_len)
+            dropout (nn.Dropout): Dropout layer applied to attention probabilities.
+
+        Returns:
+            Tensor: Weighted sum of values (attention output).
+            Tensor: Attention scores (softmax probabilities).
+        """
+        dimension_per_head = query.shape[-1]
+
+        key = key.transpose(-2, -1) # Shape: [batch_size, head_count, dim_per_head, seq_len]
+        attention_scores = (query @ key)  # Shape: [batch_size, head_count, seq_len, seq_len]
+
+        attention_scores = attention_scores / math.sqrt(dimension_per_head)  # scaled attention scores
+
+        if mask is not None:  # masked attention scores
+            # if mask = 0 -> value = -infinity (around -2^31) so that softmax excludes them
+            attention_scores.masked_fill(mask == 0, -1e9)
+
+        # Apply softmax to convert attention scores into probabilities
+        attention_scores = attention_scores.softmax(dim=-1)
+
+        if dropout is not None: # needed since dropout gets handed over as nn.Dropout and not float
+            attention_scores = dropout(attention_scores)
+
+        # Compute the weighted sum of the value vectors using the dot product with the attention scores
+        weighted_sum_of_values = attention_scores @ value  # weighted_sum_of_values
+        return weighted_sum_of_values, attention_scores  # attention scores needed for visualization
+
+    def split_heads(self, head_to_split):
+        """
+        Split a tensor into multiple heads and reorder dimensions for parallel attention computation.
+
+        Args:
+            head_to_split (Tensor): Input tensor of shape [batch_size, seq_len, model_dimensions].
+
+        Returns:
+            Tensor: Transformed tensor of shape [batch_size, head_count, seq_len, dim_per_head].
+        """
+        head_to_split = head_to_split.view(head_to_split.shape[0], head_to_split.shape[1],
+                                           self.head_count, self.dimension_per_head)
+        # Transpose to bring the head dimension forward
+        head_to_split = head_to_split.transpose(1, 2)  # Shape: [batch_size, head_count, seq_len, dim_per_head]
+        return head_to_split
+
+    def forward(self, q, k, v, mask):
+        """
+        Forward pass of the multi-head attention mechanism.
+
+        Args:
+            q (Tensor): Query tensor of shape [batch_size, seq_len, model_dimensions].
+            k (Tensor): Key tensor of shape [batch_size, seq_len, model_dimensions].
+            v (Tensor): Value tensor of shape [batch_size, seq_len, model_dimensions].
+            mask (Tensor or None): Mask tensor of shape [batch_size, 1, seq_len, seq_len].
+
+        Returns:
+            Tensor: Output tensor of shape [batch_size, seq_len, model_dimensions].
+        """
+        # Transform input embeddings into queries, keys, and values
+        # Shape: [batch_size, seq_len, model_dimensions]
+        query = self.w_q(q)
+        key = self.w_k(k)
+        value = self.w_v(v)
+
+        # Split queries, keys, and values into multiple heads for parallel computation
+        # and allowing focus on different aspects of the input.
+        query = self.split_heads(query)
+        key = self.split_heads(key)
+        value = self.split_heads(value)
+
+        attention_output, self.attention_scores = self.calculate_attention(query, key, value, mask, self.dropout)
+
+        # Shape: [batch_size, seq_len, head_count * dim_per_head]
+        attention_output = attention_output.transpose(1, 2)
+        # Ensures that the tensor is stored in a contiguous block of memory(needed before reshaping)
+        attention_output = attention_output.contiguous()
+
+        # Reshape tensor back to original dimensions
+        attention_output = attention_output.view(
+            attention_output.shape[0], -1, self.head_count * self.dimension_per_head
+        )
+
+        # Apply the output projection and return
+        return self.w_o(attention_output)
