@@ -4,9 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from torch.utils.data import Dataset, DataLoader, random_split
-
 from datasets import load_dataset 
-
 
 #split='train' is chosen because of no split being loaded when no split is specified in this case due to something 
 #train is 1m lines while test and val are 2k each) https://huggingface.co/datasets/Helsinki-NLP/opus-100/viewer/de-en/train
@@ -23,5 +21,9 @@ train_ds_raw, validation_ds_raw, test_ds_raw = random_split(ds_raw, [train_ds_si
 print(f"Train dataset size: {len(train_ds_raw)}")
 print(f"Validation dataset size: {len(validation_ds_raw)}")
 print(f"Test dataset size: {len(test_ds_raw)}")
+
+#Just checking it is really loaded
+for i in range(5):
+    print(f"{i+1}: {train_ds_raw[i]}")
 
 
