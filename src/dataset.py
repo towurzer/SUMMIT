@@ -5,15 +5,8 @@ import torch.optim as optim
 
 from torch.utils.data import Dataset, DataLoader, random_split
 from datasets import load_dataset 
-
-#More things to be added here later for the model and training
-def get_config():
-    return {
-        "datasource": 'opus_books',
-        "lang_source": "de",
-        "lang_target": "en",
-    }
-
+from config import get_config
+   
 def get_dataset(config):
 #split='train' is chosen because of errors occuring or the splits not being loaded when choosing another
 #('train' is 1m lines while test and val are 2k each) https://huggingface.co/datasets/Helsinki-NLP/opus-100/viewer/de-en/train
