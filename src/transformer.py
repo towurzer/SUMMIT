@@ -76,6 +76,7 @@ class PositionalEncodings(nn.Module):
     The goal is to inject positional information into the model, as Transformer models do not
     inherently understand token order since it processes all the tokens parallely.
     """
+
     def __init__(self, model_dimensions: int, max_sequence_length: int, dropout: float):
         """
         Initialize the PositionalEncodings module.
@@ -155,6 +156,7 @@ class MultiHeadAttentionSegment(nn.Module):
         are concatenated and transformed back using another matrix multiplication with the weight Matrix W_o,
         to get a matrix back, that has the same format as the one given as an input
         """
+
     def __init__(self, model_dimensions: int, head_count: int, dropout: float):
         """
         Initialize the MultiHeadAttentionSegment module.
@@ -295,6 +297,7 @@ class LayerNormalization(nn.Module):
         and the presence of zeros doesn't cause a shift in the other values
         (other than their own relative contribution to the mean and variance).
     """
+
     def __init__(self, features: int, epsilon: float = 10e-6):
         """
         Initialize the LayerAdditionAndNormalization module.
@@ -351,6 +354,7 @@ class FeedForwardLayer(nn.Module):
     layer processes each token independently. This adds non-linearity and depth to the model,
     enabling it to extract more information from the input.
     """
+
     def __init__(self, dimensions_model: int, dimensions_feed_forward_layer: int, dropout: float):
         """
         Initialize the FeedForwardLayer module.
@@ -399,6 +403,7 @@ class AddAndNormLayer(nn.Module):
     the gradient flow issues and making it easier for the network to learn identity mappings.
     This enables the model to be very expressiv and capable of learning more complex functions.
     """
+
     def __init__(self, features: int, dropout: float):
         """
         Initialize the AddAndNormLayer module.
@@ -429,4 +434,111 @@ class AddAndNormLayer(nn.Module):
         sublayer_output = self.dropout(sublayer_output)
         residual_added_output = residual + sublayer_output  # add ...
         return self.normalization_layer(residual_added_output)  # ... & norm
-    
+
+
+class EncoderBlock(nn.Module):
+    """
+       EncoderBlock module
+       ((batch_size, sequence_length, features) -> (batch_size, sequence_length, features))
+
+       An Encoder Block consists of two sub-layers:
+       1. A multi-head self-attention mechanism.
+       2. A position-wise feed-forward network.
+
+       Each sublayer is wrapped with an addition and normalization block,
+       addressing vanishing gradients and stabilize training.
+       """
+
+    def __init__(self, features: int, self_attention_block: MultiHeadAttentionSegment,
+                 feed_forward_block: FeedForwardLayer, dropout: float):
+        """
+        Initialize the EncoderBlock module.
+
+        Args:
+            features (int): Dimensionality of the input and output features.
+            self_attention_block (MultiHeadAttentionSegment): Multi-head self-attention mechanism.
+            feed_forward_block (FeedForwardLayer): Position-wise feed-forward network.
+            dropout (float): Dropout probability applied in the AddAndNormLayer.
+        """
+        super().__init__()
+
+        # Multi-head self-attention and feed-forward layers
+        self.self_attention_block = self_attention_block
+        self.feed_forward_block = feed_forward_block
+
+        # Add and Normalize layers for each sublayer
+        self.add_and_norm_layers = nn.ModuleList(
+            [AddAndNormLayer(features, dropout) for _ in range(2)]
+        )
+
+    def forward(self, residual_input, attention_mask):
+        """
+        Forward pass through the EncoderBlock.
+
+        Args:
+            residual_input (Tensor): Input tensor of shape (batch_size, sequence_length, features).
+            attention_mask (Tensor): attention mask to prevent attention to padding tokens.
+
+        Returns:
+            Tensor: Output tensor of shape (batch_size, sequence_length, features).
+
+        Note:
+            - In the self-attention mechanism, the same tensor is used for the query, key and value inputs.
+              This is done to allow each token to attend to all other tokens in teh sequence including itself.
+              Using the same tensor for all three inputs helps compute the attention weights and output based
+              on the relationships between the tokens in the sequence,
+              while preserving the structure of the input sequence.
+
+            - The mask ensures that the attention mechanism ignores padding tokens,
+              preventing the model from attending to irrelevant or padded positions in the input.
+        """
+
+        # the first addition and normalization layer adds the output of the self attention block and the input of it
+        residual_input = self.add_and_norm_layers[0](
+            residual_input,
+            lambda attention_input:  # attention_input is used as query key and value, as explained in the docs-note.
+            self.self_attention_block(attention_input, attention_input, attention_input, attention_mask)
+        )
+
+        # the second addition and normalization layer adds
+        # the output of the first add and norm layer with the output of the feed forward layer
+        residual_input = self.add_and_norm_layers[1](residual_input, self.feed_forward_block)
+        return residual_input
+
+
+class Encoder(nn.Module):
+    """
+    Encoder module consisting of multiple encoder blocks.
+    ((batch_size, seq_length, features), (batch_size, seq_length, features))
+
+    The Encoder processes the input tensor through a series of encoder blocks,
+    each containing self-attention and feed-forward sub-layers. After all layers,
+    the output is normalized using a layer normalization step.
+    """
+    def __init__(self, encoder_module_list: nn.ModuleList):
+        """
+        Initialize the Encoder module.
+
+        Args:
+            encoder_module_list (nn.ModuleList): List of EncoderBlocks that are applied in series.
+        """
+        super().__init__()
+
+        self.encoder_module_list = encoder_module_list
+
+    def forward(self, encoded_input, mask):
+        """
+        Forward pass through the Encoder.
+
+        Args:
+            encoded_input (Tensor): Input tensor that gets encoded,
+            which has a shape (batch_size, seq_length, features).
+            mask (Tensor): Attention mask to prevent attending to padding tokens.
+
+        Returns:
+            Tensor: Output tensor of shape (batch_size, seq_length, features) after passing through all encoder layers.
+        """
+        # Pass input tensor through each encoder block
+        for encoder in self.encoder_module_list:
+            encoded_input = encoder(encoded_input, mask)
+        return encoded_input
