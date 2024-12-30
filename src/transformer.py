@@ -102,8 +102,12 @@ class PositionalEncodings(nn.Module):
 
         # Compute divisors for sine and cosine functions (scaled by 10e4^(2i/d))
         i = torch.arange(0, model_dimensions, 2, dtype=torch.float)  # Indices for even model_dimensions
-        divisor = torch.pow(10_000, 2 * i / model_dimensions)  # 10^(4^(2i/d))
-        # TODO: Use numerically stable logarithmic formula to avoid large number problems
+
+        # divisor = torch.pow(10_000, 2 * i / model_dimensions)  # 10^(4^(2i/d))
+        # Use numerically stable logarithmic formula to avoid large number problems instead
+        log_divisor = torch.log(torch.tensor(10_000)) * (2 * i / model_dimensions)
+        divisor = torch.exp(log_divisor)
+
         x = position / divisor  # Shape: (max_sequence_length, model_dimensions/2)
 
         positional_encodings[:, 0::2] = torch.sin(x)  # Apply sine to even dimensions
