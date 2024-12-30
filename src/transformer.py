@@ -203,7 +203,11 @@ class MultiHeadAttentionSegment(nn.Module):
             Tensor: Attention scores (softmax probabilities).
 
         Note:
-            - for explanation of mask look in the encoder and decoder block - docstring
+            Note:
+            - Masking is mostly applied in the decoder, where it ensures that a token can only attend to itself
+              and previous tokens during generation.
+            - In the encoder, masking is generally limited to padding masks to handle variable-length input sequences.
+            - for further explanation of mask look in the encoder and decoder block - docstring
         """
         dimension_per_head = query.shape[-1]
 
@@ -449,21 +453,21 @@ class EncoderBlock(nn.Module):
        addressing vanishing gradients and stabilize training.
        """
 
-    def __init__(self, features: int, self_attention_block: MultiHeadAttentionSegment,
+    def __init__(self, features: int, self_attention_layer: MultiHeadAttentionSegment,
                  feed_forward_block: FeedForwardLayer, dropout: float):
         """
         Initialize the EncoderBlock module.
 
         Args:
             features (int): Dimensionality of the input and output features.
-            self_attention_block (MultiHeadAttentionSegment): Multi-head self-attention mechanism.
+            self_attention_layer (MultiHeadAttentionSegment): Multi-head self-attention mechanism.
             feed_forward_block (FeedForwardLayer): Position-wise feed-forward network.
             dropout (float): Dropout probability applied in the AddAndNormLayer.
         """
         super().__init__()
 
         # Multi-head self-attention and feed-forward layers
-        self.self_attention_block = self_attention_block
+        self.self_attention_layer = self_attention_layer
         self.feed_forward_block = feed_forward_block
 
         # Add and Normalize layers for each sublayer
@@ -497,7 +501,7 @@ class EncoderBlock(nn.Module):
         residual_input = self.add_and_norm_layers[0](
             residual_input,
             lambda attention_input:  # attention_input is used as query key and value, as explained in the docs-note.
-            self.self_attention_block(attention_input, attention_input, attention_input, attention_mask)
+            self.self_attention_layer(attention_input, attention_input, attention_input, attention_mask)
         )
 
         # the second addition and normalization layer adds
@@ -512,8 +516,7 @@ class Encoder(nn.Module):
     ((batch_size, seq_length, features), (batch_size, seq_length, features))
 
     The Encoder processes the input tensor through a series of encoder blocks,
-    each containing self-attention and feed-forward sub-layers. After all layers,
-    the output is normalized using a layer normalization step.
+    each containing self-attention and feed-forward sub-layers.
     """
     def __init__(self, encoder_module_list: nn.ModuleList):
         """
@@ -534,6 +537,7 @@ class Encoder(nn.Module):
             encoded_input (Tensor): Input tensor that gets encoded,
             which has a shape (batch_size, seq_length, features).
             mask (Tensor): Attention mask to prevent attending to padding tokens.
+            Besides that the masking mechanism is only needed for the decoder
 
         Returns:
             Tensor: Output tensor of shape (batch_size, seq_length, features) after passing through all encoder layers.
@@ -542,3 +546,128 @@ class Encoder(nn.Module):
         for encoder in self.encoder_module_list:
             encoded_input = encoder(encoded_input, mask)
         return encoded_input
+
+
+class DecoderBlock(nn.Module):
+    """
+    DecoderBlock module
+    ((batch_size, sequence_length, features) -> (batch_size, sequence_length, features))
+
+    A Decoder Block consisting of three main components:
+    1. Self-Attention Layer: Allows the decoder to focus on earlier tokens in the output sequence.
+    2. Cross-Attention Layer: Enables the decoder to attend to the encoder's output.
+    3. Feed-Forward Layer: Processes each token representation independently for richer features.
+
+    Each sublayer is wrapped with an AddAndNormLayer to stabilize the gradient and therefore the training
+    """
+    def __init__(self,
+                 self_attention_layer: MultiHeadAttentionSegment,
+                 cross_attention_layer: MultiHeadAttentionSegment,
+                 feed_forward_layer: FeedForwardLayer,
+                 features: int,
+                 dropout: float
+                 ):
+        """
+        Initialize the DecoderBlock.
+
+        Args:
+            self_attention_layer (MultiHeadAttentionSegment): Self-attention mechanism for decoder.
+            cross_attention_layer (MultiHeadAttentionSegment): Cross-attention mechanism with encoder output.
+            feed_forward_layer (FeedForwardLayer): Position-wise feed-forward network.
+            features (int): Dimensionality of the input and output features of the Feed Forward Layer.
+            dropout (float): Dropout probability for regularization.
+        """
+        super().__init__()
+
+        self.self_attention_layer = self_attention_layer
+        self.cross_attention_layer = cross_attention_layer
+        self.feed_forward_layer = feed_forward_layer
+
+        # Add and Normalize layers for self-attention, cross-attention, and feed-forward sublayer
+        self.add_and_norm_layers = nn.ModuleList(
+            [AddAndNormLayer(features, dropout) for _ in range(3)]
+        )
+
+    def forward(self, residual_input, encoder_output, encoder_mask, decoder_mask):
+        """
+        Forward pass through the DecoderBlock.
+
+        Args:
+            residual_input (Tensor): Input tensor from the previous decoder layer or initial embedding
+                                     of shape (batch_size, seq_length, features).
+            encoder_output (Tensor): Output tensor from the encoder of shape (batch_size, src_seq_length, features).
+            encoder_mask (Tensor): Attention mask for the encoder output, preventing attention to padding tokens.
+            decoder_mask (Tensor): Attention mask for the decoder input, preventing attention to padding tokens
+                                   and future tokens in the sequence (causal masking).
+
+        Returns:
+            Tensor: Output tensor of shape (batch_size, seq_length, features).
+
+        Note:
+            - The cross attention layer adds the decoder's understanding with the encoder's contextual information.
+              The decoder's output serves as the query because it represents the current decoding state, while the
+              encoder's output which serves as key and values to provide the contextual information.
+            - The encoder mask ensures that the decoder focuses only on non-padded positions in the encoder output
+        """
+        # the first addition and normalization layer adds the output of the self attention block and the input of it
+        # Self-Attention: Focuses on the decoder's own input tokens
+        residual_input = self.add_and_norm_layers[0](
+            residual_input,
+            lambda attention_input:  # Query, Key, and Value are all the decoder's input (self attention)
+            self.self_attention_layer(attention_input, attention_input, attention_input, decoder_mask)
+        )
+
+        # Cross-Attention: Attends to the encoder's output, aligning decoder input with encoder context
+        residual_input = self.add_and_norm_layers[1](
+            residual_input,
+            lambda attention_input:  # Decoder input as Query, encoder output as Key and Value (explanation in note)
+            self.cross_attention_layer(attention_input, encoder_output, encoder_output, encoder_mask)
+        )
+
+        # the third add&norm layer adds output of feed forward layer and output of cross attention layer
+        residual_input = self.add_and_norm_layers[2](residual_input, self.feed_forward_layer)
+
+        return residual_input
+
+
+class Decoder(nn.Module):
+    """
+    Decoder module consisting of multiple decoder blocks.
+    ((batch_size, seq_length, features), (batch_size, seq_length, features))
+
+    The Decoder processes the input tensor through a series of decoder blocks,
+    each containing self-attention, cross_attention and feed-forward sub-layers.
+    """
+    class Decoder(nn.Module):
+        def __init__(self, decoder_module_list: nn.ModuleList):
+            """
+            Initialize the Decoder module.
+
+            Args:
+                decoder_module_list (nn.ModuleList): List of DecoderBlocks applied in sequence.
+            """
+            super().__init__()
+
+            self.decoder_module_list = decoder_module_list
+
+    def forward(self, decoder_input, encoder_output, encoder_mask, decoder_mask):
+        """
+        Forward pass through the Decoder.
+
+        Args:
+            decoder_input (Tensor): Input tensor from the previous decoder layer or the initial embeddings.
+                                    Shape: (batch_size, tgt_seq_length, features).
+            encoder_output (Tensor): Output tensor from the encoder, used as the key and value for cross-attention.
+                                     Shape: (batch_size, src_seq_length, features).
+            encoder_mask (Tensor): Mask to prevent the decoder from attending to padding tokens in the encoder output.
+            decoder_mask (Tensor): Mask to prevent the decoder from attending to padding tokens and future tokens.
+
+        Returns:
+            Tensor: Output tensor of shape (batch_size, sequence_length, features)
+                    after processing through all decoder layers.
+        """
+        # Pass the input through each decoder block in sequence
+        for decoder in self.decoder_module_list:
+            decoder_input = decoder(decoder_input, encoder_output, encoder_mask, decoder_mask)
+
+        return decoder_input
