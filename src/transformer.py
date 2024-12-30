@@ -671,3 +671,69 @@ class Decoder(nn.Module):
             decoder_input = decoder(decoder_input, encoder_output, encoder_mask, decoder_mask)
 
         return decoder_input
+
+
+class OutputProjectionLayerForNLLLoss(nn.Module):
+    """
+    Combines a linear layer and log-softmax to produce probabilities over the vocabulary.
+    ((batch_size, seq_length, features), (batch_size, seq_length, vocab_size))
+
+    Used for Loss Calculation using NLLLoss since it expects the probabilities
+    """
+    def __init__(self, model_dimensions: int, vocab_size: int):
+        """
+        Initializes the OutputLayer with a linear transformation layer.
+
+        Args:
+            model_dimensions (int): The dimensionality of the output from the decoder layers.
+            vocab_size (int): The size of the output vocabulary.
+        """
+        super().__init__()
+        self.linear_layer = nn.Linear(model_dimensions, vocab_size)
+
+    def forward(self, decoder_output):
+        """
+        Forward pass through the OutputLayer.
+
+        Args:
+            decoder_output (Tensor): Input tensor of shape (batch_size, seq_length, model_dimensions),
+
+        Returns:
+            Tensor: Output tensor of shape (batch_size, seq_length, vocab_size),
+            after applying the linear transformation and log softmax to the input tensor.
+        """
+        linear_output = self.linear_layer(decoder_output)
+        return torch.log_softmax(linear_output, dim=-1)
+
+
+class OutputProjectionLayerForCrossEntrpyLoss(nn.Module):
+    """
+    Projection Layer that only consists of a linear layer to produce an output over the vocabulary.
+    ((batch_size, seq_length, features), (batch_size, seq_length, vocab_size))
+
+    Used for Loss Calculation using CrossEntropyLoss since the softmax function application will happen internally.
+    """
+    def __init__(self, model_dimensions: int, vocab_size: int):
+        """
+        Initializes the OutputLayer with a linear transformation layer.
+
+        Args:
+            model_dimensions (int): The dimensionality of the output from the decoder layers.
+            vocab_size (int): The size of the output vocabulary.
+        """
+        super().__init__()
+        self.linear_layer = nn.Linear(model_dimensions, vocab_size)
+
+    def forward(self, decoder_output):
+        """
+        Forward pass through the OutputLayer.
+
+        Args:
+            decoder_output (Tensor): Input tensor of shape (batch_size, seq_length, model_dimensions),
+
+        Returns:
+            Tensor: Output tensor of shape (batch_size, seq_length, vocab_size),
+            after applying the linear transformation.
+        """
+        return self.linear_layer(decoder_output)
+
