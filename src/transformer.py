@@ -519,6 +519,7 @@ class Encoder(nn.Module):
     The Encoder processes the input tensor through a series of encoder blocks,
     each containing self-attention and feed-forward sub-layers.
     """
+
     def __init__(self, encoder_module_list: nn.ModuleList):
         """
         Initialize the Encoder module.
@@ -561,6 +562,7 @@ class DecoderBlock(nn.Module):
 
     Each sublayer is wrapped with an AddAndNormLayer to stabilize the gradient and therefore the training
     """
+
     def __init__(self,
                  self_attention_layer: MultiHeadAttentionSegment,
                  cross_attention_layer: MultiHeadAttentionSegment,
@@ -639,6 +641,7 @@ class Decoder(nn.Module):
     The Decoder processes the input tensor through a series of decoder blocks,
     each containing self-attention, cross_attention and feed-forward sub-layers.
     """
+
     class Decoder(nn.Module):
         def __init__(self, decoder_module_list: nn.ModuleList):
             """
@@ -715,6 +718,7 @@ class OutputProjectionLayerForNLLLoss(nn.Module, ProjectionLayer):
 
     Used for Loss Calculation using NLLLoss since it expects the probabilities
     """
+
     def __init__(self, model_dimensions: int, vocab_size: int):
         """
         Initializes the OutputLayer with a linear transformation layer.
@@ -748,6 +752,7 @@ class OutputProjectionLayerForCrossEntrpyLoss(nn.Module, ProjectionLayer):
 
     Used for Loss Calculation using CrossEntropyLoss since the softmax function application will happen internally.
     """
+
     def __init__(self, model_dimensions: int, vocab_size: int):
         """
         Initializes the OutputLayer with a linear transformation layer.
@@ -772,105 +777,97 @@ class OutputProjectionLayerForCrossEntrpyLoss(nn.Module, ProjectionLayer):
         """
         return self.linear_layer(decoder_output)
 
-    class Transformer(nn.Module):
+
+class Transformer(nn.Module):
+    """
+    Full Transformer module
+
+    Methods:
+        encode(source, source_mask) -> Tensor: Encodes the input sequence
+
+        decode(encoder_output, encoder_mask, target, decoder_mask) -> Tensor: Decodes the target sequence
+
+        project(output_tensor) -> Tensor: Projects the output back into the vocabulary space,
+            specifics are dependent on the concrete Projection Layer Used (in- or excluding softmax)
+    """
+
+    def __init__(self,
+                 encoder: Encoder,
+                 decoder: Decoder,
+                 source_embedding_layer: InputEmbeddings,
+                 target_embedding_layer: InputEmbeddings,
+                 source_positional_encoding_layer: PositionalEncodings,
+                 target_positional_encoding_layer: PositionalEncodings,
+                 output_projection_layer: ProjectionLayer
+                 ):
         """
-        Full Transformer module
+        Initializes the Transformer model.
 
-        Methods:
-            encode(source, source_mask) -> Tensor:
-                Encodes the input sequence
+        Args:
+            encoder (Encoder): The encoder module for processing source sequences.
+            decoder (Decoder): The decoder module for generating target sequences.
+            source_embedding_layer (InputEmbeddings): Embedding layer for source sequences.
+            target_embedding_layer (InputEmbeddings): Embedding layer for target sequences.
+            source_positional_encoding_layer (PositionalEncodings): Positional encoding layer for source sequences.
+            target_positional_encoding_layer (PositionalEncodings): Positional encoding layer for target sequences.
+            output_projection_layer (ProjectionLayer): Layer that projects decoder outputs to the vocabulary space.
+        """
+        super().__init__()
 
-            decode(encoder_output, encoder_mask, target, decoder_mask) -> Tensor:
-                    Decodes the target sequence
+        self.encoder = encoder
+        self.decoder = decoder
+        self.source_embedding_layer = source_embedding_layer
+        self.target_embedding_layer = target_embedding_layer
+        self.source_pe_layer = source_positional_encoding_layer
+        self.target_pe_layer = target_positional_encoding_layer
+        self.output_projection_layer = output_projection_layer
 
-            project(output_tensor) -> Tensor:
-                Projects the output back into the vocabulary space,
-                specifics are dependent on the concrete Projection Layer Used (in- or excluding softmax)
+    def encode(self, input_tokens, source_mask):
+        """
+        Encodes the source sequence.
+        ((batch size, source_sequence), (batch_size, source_sequence, model_dimensions))
+
+        Args:
+            input_tokens (Tensor): Input sequence of shape (batch_size, source_sequence).
+            source_mask (Tensor): Attention mask to ignore padding tokens in the source sequence.
+
+        Returns:
+            Tensor: Encoded source sequence of shape (batch_size, source_sequence, dimensions_model).
+        """
+        # Apply source embeddings and positional encodings
+        input_tokens = self.source_embedding_layer(input_tokens)
+        input_tokens = self.source_pe_layer(input_tokens)
+
+        # Pass through the encoder
+        return self.encoder(input_tokens, source_mask)
+
+    def decode(self, encoder_output, encoder_mask, target, decoder_mask):
+        """
+        Decodes the target sequence using encoder output.
+        ((batch_size, source_sequence, dimensions_model), (batch_size, target_sequence, dimensions_model))
+
+        Args:
+            encoder_output (Tensor): Output from the encoder of shape (batch_size, source_sequence, dimensions_model).
+            encoder_mask (Tensor): Attention mask for the encoder output, ignoring padding tokens.
+            target (Tensor): Target sequence of shape (batch_size, target_sequence).
+            decoder_mask (Tensor): Attention mask for the target sequence, including continuos token masking.
+
+        Returns:
+            Tensor: Decoded output of shape (batch_size, target_sequence, dimensions_model).
             """
-        def __init__(self,
-                     encoder: Encoder,
-                     decoder: Decoder,
-                     source_embedding_layer: InputEmbeddings,
-                     target_embedding_layer: InputEmbeddings,
-                     source_positional_encoding_layer: PositionalEncodings,
-                     target_positional_encoding_layer: PositionalEncodings,
-                     output_projection_layer: ProjectionLayer):
-            """
-                    Initializes the Transformer model.
+        target = self.target_embedding_layer(target)
+        target = self.target_pe_layer(target)
+        return self.decoder(target, encoder_output, encoder_mask, decoder_mask)
 
-                    Args:
-                        encoder (Encoder): The encoder module for processing source sequences.
-                        decoder (Decoder): The decoder module for generating target sequences.
-                        source_embedding_layer (InputEmbeddings): Embedding layer for source sequences.
-                        target_embedding_layer (InputEmbeddings): Embedding layer for target sequences.
-                        source_positional_encoding_layer (PositionalEncodings):
-                            Positional encoding layer for source sequences.
-                        target_positional_encoding_layer (PositionalEncodings):
-                            Positional encoding layer for target sequences.
-                        output_projection_layer (ProjectionLayer):
-                            Layer that projects decoder outputs to the vocabulary space.
-                    """
-            super().__init__()
+    def project(self, output_tensor):
+        """
+        Projects the decoder output into the vocabulary space.
 
-            self.encoder = encoder
-            self.decoder = decoder
-            self.source_embedding_layer = source_embedding_layer
-            self.target_embedding_layer = target_embedding_layer
-            self.source_pe_layer = source_positional_encoding_layer
-            self.target_pe_layer = target_positional_encoding_layer
-            self.output_projection_layer = output_projection_layer
+        Args:
+            output_tensor (Tensor): Decoder output of shape (batch_size, sequence_length, model_dimensions).
 
-        def encode(self, input_tokens, source_mask):
-            """
-            Encodes the source sequence.
-            ((batch size, source_sequence), (batch_size, source_sequence, model_dimensions))
-
-            Args:
-                input_tokens (Tensor): Input sequence of shape (batch_size, source_sequence).
-                source_mask (Tensor): Attention mask to ignore padding tokens in the source sequence.
-
-            Returns:
-                Tensor: Encoded source sequence of shape (batch_size, source_sequence, dimensions_model).
-            """
-            # Apply source embeddings and positional encodings
-            input_tokens = self.source_embedding_layer(input_tokens)
-            input_tokens = self.source_pe_layer(input_tokens)
-
-            # Pass through the encoder
-            return self.encoder(input_tokens, source_mask)
-
-        def decode(self, encoder_output, encoder_mask, target, decoder_mask):
-            """
-            Decodes the target sequence using encoder output.
-            ((batch_size, source_sequence, dimensions_model), (batch_size, target_sequence, dimensions_model))
-
-            Args:
-                encoder_output (Tensor): Output from the encoder of shape
-                    (batch_size, source_sequence, dimensions_model).
-                encoder_mask (Tensor): Attention mask for the encoder output, ignoring padding tokens.
-                target (Tensor): Target sequence of shape (batch_size, target_sequence).
-                decoder_mask (Tensor): Attention mask for the target sequence, including continuos token masking.
-
-            Returns:
-                Tensor: Decoded output of shape (batch_size, target_sequence, dimensions_model).
-            """
-            target = self.target_embedding_layer(target)
-            target = self.target_pe_layer(target)
-            return self.decoder(target, encoder_output, encoder_mask, decoder_mask)
-
-        def project(self, output_tensor):
-            """
-            Projects the decoder output into the vocabulary space.
-
-            Args:
-                output_tensor (Tensor): Decoder output of shape (batch_size, sequence_length, model_dimensions).
-
-            Returns:
-                Tensor: of shape (batch_size, sequence_length, vocab_size). specifics are dependent on
-                    the concrete Projection Layer Used (in- or excluding softmax)
-            """
-            return self.output_projection_layer(output_tensor)
-
-
-
-
+        Returns:
+            Tensor: of shape (batch_size, sequence_length, vocab_size). specifics are dependent on
+                the concrete Projection Layer Used (in- or excluding softmax)
+        """
+        return self.output_projection_layer(output_tensor)
