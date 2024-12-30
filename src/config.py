@@ -4,5 +4,7 @@ def get_config():
         "datasource": 'opus_books',
         "lang_source": "de",
         "lang_target": "en",
+        "TRAIN_SIZE": 0.8,
+        "VALIDATION_SIZE": 0.1,
     }
     
