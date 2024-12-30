@@ -520,17 +520,33 @@ class Encoder(nn.Module):
     each containing self-attention and feed-forward sub-layers.
     """
 
-    def __init__(self, encoder_module_list: nn.ModuleList):
+    def __init__(self, model_dimensions: int, number_of_encoder_and_decoder_blocks: int,
+                 number_of_heads_in_multi_head_attention: int, feed_forward_hidden_layer_dimensions: int,
+                 dropout: float):
         """
         Initialize the Encoder module.
 
         Args:
-            encoder_module_list (nn.ModuleList): List of EncoderBlocks that are applied in series.
+            model_dimensions (int): Dimensionality of model layers.
+            number_of_encoder_and_decoder_blocks (int): Number of encoder/decoder blocks.
+            number_of_heads_in_multi_head_attention (int): Number of attention heads.
+            dropout (float): Dropout probability.
+            feed_forward_hidden_layer_dimensions (int): Hidden layer size in feed-forward sublayer.
         """
-        # TODO: Change Encoder to take n and produce the encoder blocks themselves
         super().__init__()
 
-        self.encoder_module_list = encoder_module_list
+        # create the encoder_blocs and save them in the encoder_module_list
+        # Each encoder Block consists of a self attention layer, and a feed forward layer
+        encoder_blocks = []
+        for _ in range(number_of_encoder_and_decoder_blocks):
+            encoder_self_attention_layer = (
+                MultiHeadAttentionSegment(model_dimensions, number_of_heads_in_multi_head_attention, dropout)
+            )
+            feed_forward_layer = FeedForwardLayer(model_dimensions, feed_forward_hidden_layer_dimensions, dropout)
+            encoder_block = EncoderBlock(model_dimensions, encoder_self_attention_layer, feed_forward_layer, dropout)
+            encoder_blocks.append(encoder_block)
+
+        self.encoder_module_list = nn.ModuleList(encoder_blocks)
 
     def forward(self, encoded_input, mask):
         """
@@ -642,17 +658,37 @@ class Decoder(nn.Module):
     The Decoder processes the input tensor through a series of decoder blocks,
     each containing self-attention, cross_attention and feed-forward sub-layers.
     """
-    def __init__(self, decoder_module_list: nn.ModuleList):
+    def __init__(self, model_dimensions: int, number_of_encoder_and_decoder_blocks: int,
+                 number_of_heads_in_multi_head_attention: int, feed_forward_hidden_layer_dimensions: int,
+                 dropout: float):
         """
         Initialize the Decoder module.
 
         Args:
-            decoder_module_list (nn.ModuleList): List of DecoderBlocks applied in sequence.
+            model_dimensions (int): Dimensionality of model layers.
+            number_of_encoder_and_decoder_blocks (int): Number of encoder/decoder blocks.
+            number_of_heads_in_multi_head_attention int: Number of attention heads.
+            dropout (float): Dropout probability.
+            feed_forward_hidden_layer_dimensions (int): Hidden layer size in feed-forward sublayer.
         """
-        # TODO: Change Decoder to take n and produce the decoder blocks themselves
         super().__init__()
 
-        self.decoder_module_list = decoder_module_list
+        # create the decoder_blocks and save them in the decoder_module_list
+        # Each decoder Block consists of a self attention layer, a cross attention layer and a feed forward layer
+        decoder_blocks = []
+        for _ in range(number_of_encoder_and_decoder_blocks):
+            decoder_self_attention_layer = (
+                MultiHeadAttentionSegment(model_dimensions, number_of_heads_in_multi_head_attention, dropout)
+            )
+            decoder_cross_attention_layer = (
+                MultiHeadAttentionSegment(model_dimensions, number_of_heads_in_multi_head_attention, dropout)
+            )
+            feed_forward_layer = FeedForwardLayer(model_dimensions, feed_forward_hidden_layer_dimensions, dropout)
+            decoder_block = DecoderBlock(model_dimensions, decoder_self_attention_layer,
+                                         decoder_cross_attention_layer, feed_forward_layer, dropout)
+            decoder_blocks.append(decoder_block)
+
+        self.decoder_module_list = nn.ModuleList(decoder_blocks)
 
     def forward(self, decoder_input, encoder_output, encoder_mask, decoder_mask):
         """
@@ -932,33 +968,11 @@ class TransformerBuilder:
         source_positional_encoding_layer = PositionalEncodings(model_dimensions, source_sequence_length, dropout)
         target_positional_encoding_layer = PositionalEncodings(model_dimensions, target_sequence_length, dropout)
 
-        # create encoder blocks
-        encoders = []
-        for _ in range(number_of_encoder_and_decoder_blocks):
-            encoder_self_attention_layer = (
-                MultiHeadAttentionSegment(model_dimensions, number_of_heads_in_multi_head_attention, dropout)
-            )
-            feed_forward_layer = FeedForwardLayer(model_dimensions, feed_forward_hidden_layer_dimensions, dropout)
-            encoder_block = EncoderBlock(model_dimensions, encoder_self_attention_layer, feed_forward_layer, dropout)
-            encoders.append(encoder_block)
-
-        # create decoder blocks
-        decoders = []
-        for _ in range(number_of_encoder_and_decoder_blocks):
-            decoder_self_attention_layer = (
-                MultiHeadAttentionSegment(model_dimensions, number_of_heads_in_multi_head_attention, dropout)
-            )
-            decoder_cross_attention_layer = (
-                MultiHeadAttentionSegment(model_dimensions, number_of_heads_in_multi_head_attention, dropout)
-            )
-            feed_forward_layer = FeedForwardLayer(model_dimensions, feed_forward_hidden_layer_dimensions, dropout)
-            decoder_block = DecoderBlock(model_dimensions, decoder_self_attention_layer,
-                                         decoder_cross_attention_layer, feed_forward_layer, dropout)
-            decoders.append(decoder_block)
-
         # create encoder and decoder
-        encoder = Encoder(nn.ModuleList(encoders))
-        decoder = Decoder(nn.ModuleList(decoders))
+        encoder = Encoder(model_dimensions, number_of_encoder_and_decoder_blocks,
+                          number_of_heads_in_multi_head_attention, feed_forward_hidden_layer_dimensions, dropout)
+        decoder = Decoder(model_dimensions, number_of_encoder_and_decoder_blocks,
+                          number_of_heads_in_multi_head_attention, feed_forward_hidden_layer_dimensions, dropout)
 
         # create projection layer
         assert loss_function_is_CrossEntropyLoss != loss_function_is_NLLLoss, "select (only) one of the loss functions"
