@@ -527,6 +527,7 @@ class Encoder(nn.Module):
         Args:
             encoder_module_list (nn.ModuleList): List of EncoderBlocks that are applied in series.
         """
+        # TODO: Change Encoder to take n and produce the encoder blocks themselves
         super().__init__()
 
         self.encoder_module_list = encoder_module_list
@@ -648,6 +649,7 @@ class Decoder(nn.Module):
         Args:
             decoder_module_list (nn.ModuleList): List of DecoderBlocks applied in sequence.
         """
+        # TODO: Change Decoder to take n and produce the decoder blocks themselves
         super().__init__()
 
         self.decoder_module_list = decoder_module_list
@@ -820,14 +822,14 @@ class Transformer(nn.Module):
         self.target_pe_layer = target_positional_encoding_layer
         self.output_projection_layer = output_projection_layer
 
-    def encode(self, input_tokens, source_mask):
+    def encode(self, input_tokens, encoder_mask):
         """
         Encodes the source sequence.
         ((batch size, source_sequence), (batch_size, source_sequence, model_dimensions))
 
         Args:
             input_tokens (Tensor): Input sequence of shape (batch_size, source_sequence).
-            source_mask (Tensor): Attention mask to ignore padding tokens in the source sequence.
+            encoder_mask (Tensor): Attention mask to ignore padding tokens in the source sequence.
 
         Returns:
             Tensor: Encoded source sequence of shape (batch_size, source_sequence, dimensions_model).
@@ -837,9 +839,9 @@ class Transformer(nn.Module):
         input_tokens = self.source_pe_layer(input_tokens)
 
         # Pass through the encoder
-        return self.encoder(input_tokens, source_mask)
+        return self.encoder(input_tokens, encoder_mask)
 
-    def decode(self, encoder_output, encoder_mask, target, decoder_mask):
+    def decode(self, encoder_output, encoder_mask, decoder_input_sequence, decoder_mask):
         """
         Decodes the target sequence using encoder output.
         ((batch_size, source_sequence, dimensions_model), (batch_size, target_sequence, dimensions_model))
@@ -847,15 +849,15 @@ class Transformer(nn.Module):
         Args:
             encoder_output (Tensor): Output from the encoder of shape (batch_size, source_sequence, dimensions_model).
             encoder_mask (Tensor): Attention mask for the encoder output, ignoring padding tokens.
-            target (Tensor): Target sequence of shape (batch_size, target_sequence).
+            decoder_input_sequence (Tensor): Input sequence of decoder in the shape (batch_size, target_sequence).
             decoder_mask (Tensor): Attention mask for the target sequence, including continuos token masking.
 
         Returns:
             Tensor: Decoded output of shape (batch_size, target_sequence, dimensions_model).
             """
-        target = self.target_embedding_layer(target)
-        target = self.target_pe_layer(target)
-        return self.decoder(target, encoder_output, encoder_mask, decoder_mask)
+        decoder_input_sequence = self.target_embedding_layer(decoder_input_sequence)
+        decoder_input_sequence = self.target_pe_layer(decoder_input_sequence)
+        return self.decoder(decoder_input_sequence, encoder_output, encoder_mask, decoder_mask)
 
     def project(self, output_tensor):
         """
