@@ -1,4 +1,5 @@
 import math
+from abc import ABC, abstractmethod
 
 import torch
 import torch.nn as nn
@@ -119,11 +120,11 @@ class PositionalEncodings(nn.Module):
         Forward pass to add positional encodings to the input sequence.
 
         Args:
-            input_embeddings (Tensor): Input tensor of shape (batch_size, seq_length, model_dimensions).
+            input_embeddings (Tensor): Input tensor of shape (batch_size, sequence_length, model_dimensions).
             The tensor typically represents the input embeddings.
 
         Returns:
-            Tensor: Output tensor of shape (batch_size, seq_length, model_dimensions),
+            Tensor: Output tensor of shape (batch_size, sequence_length, model_dimensions),
                 after adding the positional encodings and applying dropout.
 
         Note:
@@ -320,7 +321,7 @@ class LayerNormalization(nn.Module):
         Forward pass for layer normalization.
 
         Args:
-            x (Tensor): Input tensor of shape (batch_size, seq_length, features).
+            x (Tensor): Input tensor of shape (batch_size, sequence_length, features).
                 represents a sequence or batch of data.
 
         Returns:
@@ -347,7 +348,7 @@ class LayerNormalization(nn.Module):
 class FeedForwardLayer(nn.Module):
     """
     FeedForwardLayer module
-    ((batch_size, sequence_length, model_dim) -> (batch_size, sequence_length, model_dim))
+    ((batch_size, sequence_length, model_dimensions) -> (batch_size, sequence_length, model_dimensions))
 
     This module applies two linear transformations separated by a ReLU activation
     and a dropout layer. It serves as a position-wise feed-forward network
@@ -385,11 +386,11 @@ class FeedForwardLayer(nn.Module):
                 Forward pass to process input through the feed-forward layer.
 
                 Args:
-                    input_tensor (Tensor): Input tensor of shape (batch_size, seq_length, model_dim).
+                    input_tensor (Tensor): Input tensor of shape (batch_size, sequence_length, model_dimensions).
 
                 Returns:
                     Tensor: Output tensor of the same shape as the input tensor
-                            (batch_size, seq_length, model_dim).
+                            (batch_size, sequence_length, model_dimensions).
         """
         input_tensor = self.linear_1(input_tensor)
         input_tensor = torch.relu(input_tensor)
@@ -427,12 +428,12 @@ class AddAndNormLayer(nn.Module):
 
         Args:
             residual (Tensor): Input tensor (residual connection) of shape
-                                (batch_size, seq_length, features).
+                                (batch_size, sequence_length, features).
             sublayer_function (Callable): A function representing the sublayer
                                             (e.g., attention or feed-forward).
 
         Returns:
-            Tensor: Output tensor of shape (batch_size, seq_length, features).
+            Tensor: Output tensor of shape (batch_size, sequence_length, features).
         """
         sublayer_output = sublayer_function(residual)  # compute sublayer
         sublayer_output = self.dropout(sublayer_output)
@@ -513,7 +514,7 @@ class EncoderBlock(nn.Module):
 class Encoder(nn.Module):
     """
     Encoder module consisting of multiple encoder blocks.
-    ((batch_size, seq_length, features), (batch_size, seq_length, features))
+    ((batch_size, sequence_length, features), (batch_size, sequence_length, features))
 
     The Encoder processes the input tensor through a series of encoder blocks,
     each containing self-attention and feed-forward sub-layers.
@@ -535,12 +536,12 @@ class Encoder(nn.Module):
 
         Args:
             encoded_input (Tensor): Input tensor that gets encoded,
-            which has a shape (batch_size, seq_length, features).
+            which has a shape (batch_size, sequence_length, features).
             mask (Tensor): Attention mask to prevent attending to padding tokens.
             Besides that the masking mechanism is only needed for the decoder
 
         Returns:
-            Tensor: Output tensor of shape (batch_size, seq_length, features) after passing through all encoder layers.
+            Tensor: Output tensor of shape (batch_size, sequence_length, features) after passing through all encoders.
         """
         # Pass input tensor through each encoder block
         for encoder in self.encoder_module_list:
@@ -594,14 +595,14 @@ class DecoderBlock(nn.Module):
 
         Args:
             residual_input (Tensor): Input tensor from the previous decoder layer or initial embedding
-                                     of shape (batch_size, seq_length, features).
-            encoder_output (Tensor): Output tensor from the encoder of shape (batch_size, src_seq_length, features).
+                                     of shape (batch_size, sequence_length, features).
+            encoder_output (Tensor): Output tensor from the encoder of shape (batch_size, src_sequence_length, features)
             encoder_mask (Tensor): Attention mask for the encoder output, preventing attention to padding tokens.
             decoder_mask (Tensor): Attention mask for the decoder input, preventing attention to padding tokens
                                    and future tokens in the sequence (causal masking).
 
         Returns:
-            Tensor: Output tensor of shape (batch_size, seq_length, features).
+            Tensor: Output tensor of shape (batch_size, sequence_length, features).
 
         Note:
             - The cross attention layer adds the decoder's understanding with the encoder's contextual information.
@@ -633,7 +634,7 @@ class DecoderBlock(nn.Module):
 class Decoder(nn.Module):
     """
     Decoder module consisting of multiple decoder blocks.
-    ((batch_size, seq_length, features), (batch_size, seq_length, features))
+    ((batch_size, sequence_length, features), (batch_size, sequence_length, features))
 
     The Decoder processes the input tensor through a series of decoder blocks,
     each containing self-attention, cross_attention and feed-forward sub-layers.
@@ -656,9 +657,9 @@ class Decoder(nn.Module):
 
         Args:
             decoder_input (Tensor): Input tensor from the previous decoder layer or the initial embeddings.
-                                    Shape: (batch_size, tgt_seq_length, features).
+                                    Shape: (batch_size, tgt_sequence_length, features).
             encoder_output (Tensor): Output tensor from the encoder, used as the key and value for cross-attention.
-                                     Shape: (batch_size, src_seq_length, features).
+                                     Shape: (batch_size, src_sequence_length, features).
             encoder_mask (Tensor): Mask to prevent the decoder from attending to padding tokens in the encoder output.
             decoder_mask (Tensor): Mask to prevent the decoder from attending to padding tokens and future tokens.
 
@@ -673,10 +674,44 @@ class Decoder(nn.Module):
         return decoder_input
 
 
-class OutputProjectionLayerForNLLLoss(nn.Module):
+class ProjectionLayer(nn.Module, ABC):
+    """
+    Placeholder class so that the projection layer used in the transformer can be specified as needed
+    Is supposed to imitate the strategy design pattern
+    """
+
+    class InterfaceException(Exception):
+        """Custom exception raised when a method is not implemented in a subclass."""
+        pass
+
+    @abstractmethod
+    def __init__(self, model_dimensions: int, vocab_size: int):
+        """
+        Fake initialization Function to force all subclasses to implement the correct constructor
+
+        Args:
+            model_dimensions (int): The dimensionality of the output from the decoder layers.
+            vocab_size (int): The size of the output vocabulary.
+        """
+        super().__init__()
+
+        self.model_dimensions = model_dimensions
+        self.vocab_size = vocab_size
+
+        raise self.InterfaceException(
+            "This class. Is supposed to act like an Interface, you can't have an instance of it"
+        )
+
+    @abstractmethod
+    def forward(self, x):
+        """Perform a forward pass (to be implemented by subclasses)."""
+        raise self.InterfaceException("Please use a concrete implementation for your model.")
+
+
+class OutputProjectionLayerForNLLLoss(nn.Module, ProjectionLayer):
     """
     Combines a linear layer and log-softmax to produce probabilities over the vocabulary.
-    ((batch_size, seq_length, features), (batch_size, seq_length, vocab_size))
+    ((batch_size, sequence_length, features), (batch_size, sequence_length, vocab_size))
 
     Used for Loss Calculation using NLLLoss since it expects the probabilities
     """
@@ -696,20 +731,20 @@ class OutputProjectionLayerForNLLLoss(nn.Module):
         Forward pass through the OutputLayer.
 
         Args:
-            decoder_output (Tensor): Input tensor of shape (batch_size, seq_length, model_dimensions),
+            decoder_output (Tensor): Input tensor of shape (batch_size, sequence_length, model_dimensions),
 
         Returns:
-            Tensor: Output tensor of shape (batch_size, seq_length, vocab_size),
+            Tensor: Output tensor of shape (batch_size, sequence_length, vocab_size),
             after applying the linear transformation and log softmax to the input tensor.
         """
         linear_output = self.linear_layer(decoder_output)
         return torch.log_softmax(linear_output, dim=-1)
 
 
-class OutputProjectionLayerForCrossEntrpyLoss(nn.Module):
+class OutputProjectionLayerForCrossEntrpyLoss(nn.Module, ProjectionLayer):
     """
     Projection Layer that only consists of a linear layer to produce an output over the vocabulary.
-    ((batch_size, seq_length, features), (batch_size, seq_length, vocab_size))
+    ((batch_size, sequence_length, features), (batch_size, sequence_length, vocab_size))
 
     Used for Loss Calculation using CrossEntropyLoss since the softmax function application will happen internally.
     """
@@ -729,11 +764,113 @@ class OutputProjectionLayerForCrossEntrpyLoss(nn.Module):
         Forward pass through the OutputLayer.
 
         Args:
-            decoder_output (Tensor): Input tensor of shape (batch_size, seq_length, model_dimensions),
+            decoder_output (Tensor): Input tensor of shape (batch_size, sequence_length, model_dimensions),
 
         Returns:
-            Tensor: Output tensor of shape (batch_size, seq_length, vocab_size),
+            Tensor: Output tensor of shape (batch_size, sequence_length, vocab_size),
             after applying the linear transformation.
         """
         return self.linear_layer(decoder_output)
+
+    class Transformer(nn.Module):
+        """
+        Full Transformer module
+
+        Methods:
+            encode(source, source_mask) -> Tensor:
+                Encodes the input sequence
+
+            decode(encoder_output, encoder_mask, target, decoder_mask) -> Tensor:
+                    Decodes the target sequence
+
+            project(output_tensor) -> Tensor:
+                Projects the output back into the vocabulary space,
+                specifics are dependent on the concrete Projection Layer Used (in- or excluding softmax)
+            """
+        def __init__(self,
+                     encoder: Encoder,
+                     decoder: Decoder,
+                     source_embedding_layer: InputEmbeddings,
+                     target_embedding_layer: InputEmbeddings,
+                     source_positional_encoding_layer: PositionalEncodings,
+                     target_positional_encoding_layer: PositionalEncodings,
+                     output_projection_layer: ProjectionLayer):
+            """
+                    Initializes the Transformer model.
+
+                    Args:
+                        encoder (Encoder): The encoder module for processing source sequences.
+                        decoder (Decoder): The decoder module for generating target sequences.
+                        source_embedding_layer (InputEmbeddings): Embedding layer for source sequences.
+                        target_embedding_layer (InputEmbeddings): Embedding layer for target sequences.
+                        source_positional_encoding_layer (PositionalEncodings):
+                            Positional encoding layer for source sequences.
+                        target_positional_encoding_layer (PositionalEncodings):
+                            Positional encoding layer for target sequences.
+                        output_projection_layer (ProjectionLayer):
+                            Layer that projects decoder outputs to the vocabulary space.
+                    """
+            super().__init__()
+
+            self.encoder = encoder
+            self.decoder = decoder
+            self.source_embedding_layer = source_embedding_layer
+            self.target_embedding_layer = target_embedding_layer
+            self.source_pe_layer = source_positional_encoding_layer
+            self.target_pe_layer = target_positional_encoding_layer
+            self.output_projection_layer = output_projection_layer
+
+        def encode(self, input_tokens, source_mask):
+            """
+            Encodes the source sequence.
+            ((batch size, source_sequence), (batch_size, source_sequence, model_dimensions))
+
+            Args:
+                input_tokens (Tensor): Input sequence of shape (batch_size, source_sequence).
+                source_mask (Tensor): Attention mask to ignore padding tokens in the source sequence.
+
+            Returns:
+                Tensor: Encoded source sequence of shape (batch_size, source_sequence, dimensions_model).
+            """
+            # Apply source embeddings and positional encodings
+            input_tokens = self.source_embedding_layer(input_tokens)
+            input_tokens = self.source_pe_layer(input_tokens)
+
+            # Pass through the encoder
+            return self.encoder(input_tokens, source_mask)
+
+        def decode(self, encoder_output, encoder_mask, target, decoder_mask):
+            """
+            Decodes the target sequence using encoder output.
+            ((batch_size, source_sequence, dimensions_model), (batch_size, target_sequence, dimensions_model))
+
+            Args:
+                encoder_output (Tensor): Output from the encoder of shape
+                    (batch_size, source_sequence, dimensions_model).
+                encoder_mask (Tensor): Attention mask for the encoder output, ignoring padding tokens.
+                target (Tensor): Target sequence of shape (batch_size, target_sequence).
+                decoder_mask (Tensor): Attention mask for the target sequence, including continuos token masking.
+
+            Returns:
+                Tensor: Decoded output of shape (batch_size, target_sequence, dimensions_model).
+            """
+            target = self.target_embedding_layer(target)
+            target = self.target_pe_layer(target)
+            return self.decoder(target, encoder_output, encoder_mask, decoder_mask)
+
+        def project(self, output_tensor):
+            """
+            Projects the decoder output into the vocabulary space.
+
+            Args:
+                output_tensor (Tensor): Decoder output of shape (batch_size, sequence_length, model_dimensions).
+
+            Returns:
+                Tensor: of shape (batch_size, sequence_length, vocab_size). specifics are dependent on
+                    the concrete Projection Layer Used (in- or excluding softmax)
+            """
+            return self.output_projection_layer(output_tensor)
+
+
+
 
