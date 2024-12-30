@@ -454,13 +454,13 @@ class EncoderBlock(nn.Module):
        addressing vanishing gradients and stabilize training.
        """
 
-    def __init__(self, features: int, self_attention_layer: MultiHeadAttentionSegment,
+    def __init__(self, model_dimensions: int, self_attention_layer: MultiHeadAttentionSegment,
                  feed_forward_block: FeedForwardLayer, dropout: float):
         """
         Initialize the EncoderBlock module.
 
         Args:
-            features (int): Dimensionality of the input and output features.
+            model_dimensions (int): Dimensionality of the input and output features.
             self_attention_layer (MultiHeadAttentionSegment): Multi-head self-attention mechanism.
             feed_forward_block (FeedForwardLayer): Position-wise feed-forward network.
             dropout (float): Dropout probability applied in the AddAndNormLayer.
@@ -473,7 +473,7 @@ class EncoderBlock(nn.Module):
 
         # Add and Normalize layers for each sublayer
         self.add_and_norm_layers = nn.ModuleList(
-            [AddAndNormLayer(features, dropout) for _ in range(2)]
+            [AddAndNormLayer(model_dimensions, dropout) for _ in range(2)]
         )
 
     def forward(self, residual_input, attention_mask):
@@ -564,10 +564,10 @@ class DecoderBlock(nn.Module):
     """
 
     def __init__(self,
+                 model_dimensions: int,
                  self_attention_layer: MultiHeadAttentionSegment,
                  cross_attention_layer: MultiHeadAttentionSegment,
                  feed_forward_layer: FeedForwardLayer,
-                 features: int,
                  dropout: float
                  ):
         """
@@ -577,7 +577,7 @@ class DecoderBlock(nn.Module):
             self_attention_layer (MultiHeadAttentionSegment): Self-attention mechanism for decoder.
             cross_attention_layer (MultiHeadAttentionSegment): Cross-attention mechanism with encoder output.
             feed_forward_layer (FeedForwardLayer): Position-wise feed-forward network.
-            features (int): Dimensionality of the input and output features of the Feed Forward Layer.
+            model_dimensions (int): Dimensionality of the input and output features of the Feed Forward Layer.
             dropout (float): Dropout probability for regularization.
         """
         super().__init__()
@@ -588,7 +588,7 @@ class DecoderBlock(nn.Module):
 
         # Add and Normalize layers for self-attention, cross-attention, and feed-forward sublayer
         self.add_and_norm_layers = nn.ModuleList(
-            [AddAndNormLayer(features, dropout) for _ in range(3)]
+            [AddAndNormLayer(model_dimensions, dropout) for _ in range(3)]
         )
 
     def forward(self, residual_input, encoder_output, encoder_mask, decoder_mask):
@@ -641,18 +641,16 @@ class Decoder(nn.Module):
     The Decoder processes the input tensor through a series of decoder blocks,
     each containing self-attention, cross_attention and feed-forward sub-layers.
     """
+    def __init__(self, decoder_module_list: nn.ModuleList):
+        """
+        Initialize the Decoder module.
 
-    class Decoder(nn.Module):
-        def __init__(self, decoder_module_list: nn.ModuleList):
-            """
-            Initialize the Decoder module.
+        Args:
+            decoder_module_list (nn.ModuleList): List of DecoderBlocks applied in sequence.
+        """
+        super().__init__()
 
-            Args:
-                decoder_module_list (nn.ModuleList): List of DecoderBlocks applied in sequence.
-            """
-            super().__init__()
-
-            self.decoder_module_list = decoder_module_list
+        self.decoder_module_list = decoder_module_list
 
     def forward(self, decoder_input, encoder_output, encoder_mask, decoder_mask):
         """
@@ -684,7 +682,7 @@ class ProjectionLayer(nn.Module, ABC):
     """
 
     class InterfaceException(Exception):
-        """Custom exception raised when a method is not implemented in a subclass."""
+        """Custom exception raised when trying to call a method from the class that simulates an interface."""
         pass
 
     @abstractmethod
@@ -871,3 +869,117 @@ class Transformer(nn.Module):
                 the concrete Projection Layer Used (in- or excluding softmax)
         """
         return self.output_projection_layer(output_tensor)
+
+
+class TransformerBuilder:
+    """
+    A utility class for building and initializing a Transformer model.
+
+    This class separates the model construction from the `Transformer` class to avoid bloating its `__init__` method.
+    It handles the creation of embeddings, positional encodings, encoder/decoder blocks, and projection layers,
+    making the Transformer model easier to maintain and extend.
+
+    Methods:
+        build_transformer: Builds and returns a fully initialized Transformer model with specified configurations.
+    """
+    @staticmethod
+    def build_transformer(source_vocab_size: int, target_vocab_size: int,
+                          source_sequence_length: int, target_sequence_length: int,
+                          loss_function_is_NLLLoss: bool,
+                          loss_function_is_CrossEntropyLoss: bool,
+                          model_dimensions: int = 512,
+                          number_of_encoder_and_decoder_blocks: int = 6,
+                          number_of_heads_in_multi_head_attention: int = 8,
+                          dropout: float = 0.1,
+                          feed_forward_hidden_layer_dimensions: int = 2048,
+                          ) -> Transformer:
+        """
+        Builds and returns a Transformer model.
+
+        Args:
+            source_vocab_size (int): Size of the source vocabulary.
+            target_vocab_size (int): Size of the target vocabulary.
+            source_sequence_length (int): Maximum sequence length for source input.
+            target_sequence_length (int): Maximum sequence length for target input.
+            loss_function_is_NLLLoss (bool): If the loss function, used with the output of the transformer is NLLLoss.
+            loss_function_is_CrossEntropyLoss (bool): If the loss function,
+                used with the output of the transformer is CrossEntropyLoss
+            model_dimensions (int, optional): Dimensionality of model layers. Default is 512.
+            number_of_encoder_and_decoder_blocks (int, optional): Number of encoder/decoder blocks. Default is 6.
+            number_of_heads_in_multi_head_attention (int, optional): Number of attention heads. Default is 8.
+            dropout (float, optional): Dropout probability. (for more information look at the note) Default is 0.1.
+            feed_forward_hidden_layer_dimensions (int, optional): Hidden layer size in feed-forward sublayer.
+                Default is 2048.
+
+        Returns:
+            Transformer: A fully initialized Transformer model.
+
+        Raises:
+            AssertionError: If an invalid loss function type is provided or the projection layer isn't set up correctly.
+
+        Note:
+            - Dropout is used during training to prevent overfitting by randomly setting a fraction of the input
+              units to zero at each update. This helps improve the generalization of the model by preventing it
+              from becoming overly reliant on certain features.
+        """
+        # create embedding layers
+        source_embedding_layer = InputEmbeddings(model_dimensions, source_vocab_size)
+        target_embedding_layer = InputEmbeddings(model_dimensions, target_vocab_size)
+
+        # create positional encoding layers
+        source_positional_encoding_layer = PositionalEncodings(model_dimensions, source_sequence_length, dropout)
+        target_positional_encoding_layer = PositionalEncodings(model_dimensions, target_sequence_length, dropout)
+
+        # create encoder blocks
+        encoders = []
+        for _ in range(number_of_encoder_and_decoder_blocks):
+            encoder_self_attention_layer = (
+                MultiHeadAttentionSegment(model_dimensions, number_of_heads_in_multi_head_attention, dropout)
+            )
+            feed_forward_layer = FeedForwardLayer(model_dimensions, feed_forward_hidden_layer_dimensions, dropout)
+            encoder_block = EncoderBlock(model_dimensions, encoder_self_attention_layer, feed_forward_layer, dropout)
+            encoders.append(encoder_block)
+
+        # create decoder blocks
+        decoders = []
+        for _ in range(number_of_encoder_and_decoder_blocks):
+            decoder_self_attention_layer = (
+                MultiHeadAttentionSegment(model_dimensions, number_of_heads_in_multi_head_attention, dropout)
+            )
+            decoder_cross_attention_layer = (
+                MultiHeadAttentionSegment(model_dimensions, number_of_heads_in_multi_head_attention, dropout)
+            )
+            feed_forward_layer = FeedForwardLayer(model_dimensions, feed_forward_hidden_layer_dimensions, dropout)
+            decoder_block = DecoderBlock(model_dimensions, decoder_self_attention_layer,
+                                         decoder_cross_attention_layer, feed_forward_layer, dropout)
+            decoders.append(decoder_block)
+
+        # create encoder and decoder
+        encoder = Encoder(nn.ModuleList(encoders))
+        decoder = Decoder(nn.ModuleList(decoders))
+
+        # create projection layer
+        assert loss_function_is_CrossEntropyLoss != loss_function_is_NLLLoss, "select (only) one of the loss functions"
+        projection_layer = None
+        if loss_function_is_CrossEntropyLoss:
+            projection_layer = OutputProjectionLayerForCrossEntrpyLoss(model_dimensions, target_vocab_size)
+        if loss_function_is_NLLLoss:
+            projection_layer = OutputProjectionLayerForNLLLoss(model_dimensions, target_vocab_size)
+
+        assert projection_layer is not None, "something went horribly wrong"
+
+        # create transformer
+        transformer = Transformer(encoder, decoder,
+                                  source_embedding_layer, target_embedding_layer,
+                                  source_positional_encoding_layer, target_positional_encoding_layer,
+                                  projection_layer
+                                  )
+
+        # initialize parameters
+        for parameter in transformer.parameters():
+            if parameter.dim() > 1:
+                nn.init.xavier_uniform_(parameter)
+                # Xavier-initialization is used to maintain a good variance balance in weights, since it led to good
+                # results in literature
+
+        return transformer
