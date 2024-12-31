@@ -387,14 +387,13 @@ class FeedForwardLayer(nn.Module):
 
     def forward(self, input_tensor):
         """
-                Forward pass to process input through the feed-forward layer.
+        Forward pass to process input through the feed-forward layer.
 
-                Args:
-                    input_tensor (Tensor): Input tensor of shape (batch_size, sequence_length, model_dimensions).
+        Args:
+            input_tensor (Tensor): Input tensor of shape (batch_size, sequence_length, model_dimensions).
 
-                Returns:
-                    Tensor: Output tensor of the same shape as the input tensor
-                            (batch_size, sequence_length, model_dimensions).
+        Returns:
+            Tensor: Output tensor of the same shape as the input tensor (batch_size, sequence_length, model_dimensions).
         """
         input_tensor = self.linear_1(input_tensor)
         input_tensor = torch.relu(input_tensor)
@@ -894,7 +893,7 @@ class Transformer(nn.Module):
 
         Returns:
             Tensor: Decoded output of shape (batch_size, target_sequence, dimensions_model).
-            """
+        """
         decoder_input_sequence = self.target_embedding_layer(decoder_input_sequence)
         decoder_input_sequence = self.target_pe_layer(decoder_input_sequence)
         return self.decoder(decoder_input_sequence, encoder_output, encoder_mask, decoder_mask)
