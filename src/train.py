@@ -22,7 +22,7 @@ from dataset import TranslationDataset
 # model
 from transformer import TransformerBuilder
 
-class DataLoader():
+class DataSetLoader():
 
 	@staticmethod
 	def get_dataset(config):
@@ -31,8 +31,8 @@ class DataLoader():
 		dataset_raw = load_dataset(f"{config['datasource']}", f"{config['lang_source']}-{config['lang_target']}", split='train')
 
 	# tokenize
-		tokenizer_source = DataLoader.__load_tokenizer(config, dataset_raw, config['lang_source'])
-		tokenizer_target = DataLoader.__load_tokenizer(config, dataset_raw, config['lang_target'])
+		tokenizer_source = DataSetLoader.__load_tokenizer(config, dataset_raw, config['lang_source'])
+		tokenizer_target = DataSetLoader.__load_tokenizer(config, dataset_raw, config['lang_target'])
 
 	# last line has to be written like this because the lengths otherwise do not match exactly and cause an error (splits do not overlap by function)
 		train_ds_size = int(config['TRAIN_SIZE'] * len(dataset_raw))  
@@ -46,7 +46,7 @@ class DataLoader():
 		train_ds = TranslationDataset(train_ds_raw, config, tokenizer_source, tokenizer_target)
 		validation_ds = TranslationDataset(validation_ds_raw, config, tokenizer_source, tokenizer_target)
 		test_ds = TranslationDataset(test_ds_raw, config, tokenizer_source, tokenizer_target)
-		
+
 		return train_ds, validation_ds, test_ds, tokenizer_source, tokenizer_target
 	
 	
@@ -56,13 +56,13 @@ class DataLoader():
 	# loads tokenizer from file, if none is found, it makes a new one
 	
 	def __load_tokenizer(config, dataset, language):
-		folder = Path(config['TOKENIZER_DIRECTORY'])
+		folder = Path(config['TRAIN_DIRECTORY']) / Path(config['datasource']) / Path(config['TOKENIZER_DIRECTORY'])
 		if not Path.exists(folder): 
 			folder.mkdir(parents = True)
 		file = folder / f"{language}.json"
-		print(f"Looking for tokenizer files in: {file.resolve()}")
+		print(f"Looking for tokenizer file: {file.resolve()}")
 		if Path.exists(file): 
-			print("found existing tokenizer files!")
+			print("Found existing tokenizer file, reusing it!")
 			return Tokenizer.from_file(str(file)) #tokenizer already exists, just load
 		else:
 			print("Tokenizing...")
@@ -84,6 +84,18 @@ class Training():
 		self.learning_rate = float(config['LEARNING_RATE'])
 		self.eps = float(config['EPS'])
 		self.seed = int(config['SEED'])
+		self.batch_size = int(config['BATCH_SIZE'])
+		self.epochs = int(config["EPOCHS"])
+
+		# folders
+		self.dataset_folder = Path(self.config["TRAIN_DIRECTORY"]) / Path(self.config["datasource"])
+		if not Path.exists(self.dataset_folder): 
+			self.dataset_folder.mkdir(parents = True)
+		print(f"Base directory for model-related data: {str(self.dataset_folder)}")
+		self.checkpoint_folder = self.dataset_folder / Path(self.config["CHECKPOINT_DIRECTORY"])
+		if not Path.exists(self.checkpoint_folder): 
+			self.checkpoint_folder.mkdir(parents = True)
+		print(f"Checkpoint directory: {str(self.checkpoint_folder)}")
 
 		# get device
 		print("Checking devices...")
@@ -99,44 +111,95 @@ class Training():
 
 		# get dataset
 		print("Loading dataset...")
-		train_ds, validation_ds, test_ds, tokenizer_source, tokenizer_target = DataLoader.get_dataset(get_config())
+		self.train_ds, self.validation_ds, self.test_ds, self.tokenizer_source, self.tokenizer_target = DataSetLoader.get_dataset(get_config())
 
 		# data points printed are the amount of sentence pairs
-		print(f"Train dataset size: {len(train_ds)}")
-		print(f"Validation dataset size: {len(validation_ds)}")
-		print(f"Test dataset size: {len(test_ds)}\n")
+		print(f"Train dataset size: {len(self.train_ds)}")
+		print(f"Validation dataset size: {len(self.validation_ds)}")
+		print(f"Test dataset size: {len(self.test_ds)}\n")
 
 		# print random example
-		print(f"Example data entry: {train_ds[621]}")
+		print(f"Example data entry: {self.train_ds[621]}\n")
 
-		# todo: make use of different configurations ?????
-		# self.model = TransformerBuilder.build_transformer(tokenizer_source.get_vocab_size(), tokenizer_target.get_vocab_size(), self.max_tokens, self.max_tokens, False, True)
+		# dataloader
+		print("Creating dataloaders...")
+		self.train_dataloader = DataLoader(self.train_ds, batch_size=self.batch_size, shuffle=True)
+		self.validation_dataloader = DataLoader(self.validation_ds, batch_size=1, shuffle=True)
+		self.test_dataloader = DataLoader(self.test_ds, batch_size=1, shuffle=True)
 
-		# self.optimizer = torch.optim.Adam(self.model.parameters(), self.learning_rate, eps = self.eps)
+		print("Loading model")
+		# TODO: make use of different configurations ?????
+		self.model = TransformerBuilder.build_transformer(self.tokenizer_source.get_vocab_size(), self.tokenizer_target.get_vocab_size(), self.max_tokens, self.max_tokens, False, True).to(self.device)
 
-		# print(self.model)
+		self.optimizer = torch.optim.Adam(self.model.parameters(), self.learning_rate, eps = self.eps)
+
+		print(self.model)
 
 
-	def training_loop(self, start_epoch = 0):
-		print(f"Starting training at epoch {start_epoch}")
+	def train_model(self, start_epoch = 0):
+		self.epoch = 0
+		self.global_step = 0
+
+		self.loss_function = nn.CrossEntropyLoss(ignore_index=self.tokenizer_source.token_to_id('<P>'), label_smoothing=0.1).to(self.device)
+
+		if start_epoch > 0:
+			# TODO load existing state if epoch > 0
+			pass
+		
+		print(f"Starting training at epoch {self.epoch}")
+
+		while self.epoch < self.epochs:
+			self.training_loop()
+			self.epoch += 1
+
+
+	def training_loop(self):
+		# clear CUDA cache
 		if torch.cuda.is_available(): torch.cuda.empty_cache()
-		
-		epoch = start_epoch
-		global_step = 0
 
-		# call train iteration here
-		
+		# set model to training mode
+		self.model.train()
+
+		# load batch
+		for batch in self.train_dataloader:
+			#print(batch)
+			to_encoder = batch['to_encoder'].to(self.device)
+			to_decoder = batch['to_decoder'].to(self.device)
+			mask_encoder = batch['mask_encoder'].to(self.device)
+			mask_decoder = batch['mask_decoder'].to(self.device)
+			label = batch['label'].to(self.device)
+
+			# for debug
+			text_source = batch['text_source']
+			text_target = batch['text_target']
+
+			# encoder, decoder, projection
+			encoded = self.model.encode(to_encoder, mask_encoder)
+			decoded = self.model.decode(encoded, mask_encoder, to_decoder, mask_decoder)
+			projected = self.model.project(decoded)
+
+			# loss
+			loss = self.loss_function(projected.view(-1, self.tokenizer_target.get_vocab_size()), label.view(-1))
+			print(loss)
+
+			# backpropagation
+			loss.backward()
+
+			# update weights
+			self.optimizer.step()
+			self.optimizer.zero_grad()
+
+			self.global_step += 1
 
 		# save iteration
-		# torch.save({
-		# 	'epoch': epoch,
-		# 	'global_step': global_step
-		# 	'model_states': self.model.state_dict(),
-		# 	'optimizer_state': self.optimizer.state_dict(),
-		# }, )
-
-		pass
-
+		filename = self.checkpoint_folder / Path(f"{self.epoch:02d}")
+		torch.save({
+			'epoch': self.epoch,
+			'global_step': self.global_step,
+			'model_states': self.model.state_dict(),
+			'optimizer_state': self.optimizer.state_dict(),
+		}, filename)
 
 
 trainer = Training(get_config())
+trainer.train_model(0)

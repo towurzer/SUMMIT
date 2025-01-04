@@ -740,14 +740,14 @@ class ProjectionLayer(nn.Module, ABC):
 		self.model_dimensions = model_dimensions
 		self.vocab_size = vocab_size
 
-		raise self.InterfaceException(
-			"This class. Is supposed to act like an Interface, you can't have an instance of it"
-		)
+		# raise self.InterfaceException(
+		# 	"This class is supposed to act like an Interface, you can't have an instance of it."
+		# )
 
 	@abstractmethod
 	def forward(self, x):
 		"""Perform a forward pass (to be implemented by subclasses)."""
-		raise self.InterfaceException("Please use a concrete implementation for your model.")
+		# raise self.InterfaceException("Please use a concrete implementation for your model.")
 
 
 class OutputProjectionLayerForNLLLoss(ProjectionLayer):
@@ -789,7 +789,7 @@ class OutputProjectionLayerForNLLLoss(ProjectionLayer):
 		return torch.log_softmax(linear_output, dim=-1)
 
 
-class OutputProjectionLayerForCrossEntrpyLoss(ProjectionLayer):
+class OutputProjectionLayerForCrossEntropyLoss(ProjectionLayer):
 	"""
 	Projection Layer that only consists of a linear layer to produce an output over the vocabulary.
 	((batch_size, sequence_length, features), (batch_size, sequence_length, vocab_size))
@@ -991,7 +991,7 @@ class TransformerBuilder:
 		assert loss_function_is_CrossEntropyLoss != loss_function_is_NLLLoss, "select (only) one of the loss functions"
 		projection_layer = None
 		if loss_function_is_CrossEntropyLoss:
-			projection_layer = OutputProjectionLayerForCrossEntrpyLoss(model_dimensions, target_vocab_size)
+			projection_layer = OutputProjectionLayerForCrossEntropyLoss(model_dimensions, target_vocab_size)
 		if loss_function_is_NLLLoss:
 			projection_layer = OutputProjectionLayerForNLLLoss(model_dimensions, target_vocab_size)
 
