@@ -20,7 +20,7 @@ from tokenizers.pre_tokenizers import Whitespace
 from dataset import TranslationDataset
 
 # model
-# from transformer import TransformerBuilder
+from transformer import TransformerBuilder
 
 class DataLoader():
 
