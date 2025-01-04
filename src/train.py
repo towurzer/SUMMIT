@@ -26,23 +26,37 @@ class DataSetLoader():
 
 	@staticmethod
 	def get_dataset(config):
-	#split='train' is chosen because of errors occuring or the splits not being loaded when choosing another.
-	#('train' is 1m lines while test and val are 2k each) https://huggingface.co/datasets/Helsinki-NLP/opus-100/viewer/de-en/train
+		#split='train' is chosen because of errors occuring or the splits not being loaded when choosing another.
+		#('train' is 1m lines while test and val are 2k each) https://huggingface.co/datasets/Helsinki-NLP/opus-100/viewer/de-en/train
+		print("Loading raw dataset...")
 		dataset_raw = load_dataset(f"{config['datasource']}", f"{config['lang_source']}-{config['lang_target']}", split='train')
 
-	# tokenize
+		# tokenize
+		print("Creating tokenizers...")
 		tokenizer_source = DataSetLoader.__load_tokenizer(config, dataset_raw, config['lang_source'])
 		tokenizer_target = DataSetLoader.__load_tokenizer(config, dataset_raw, config['lang_target'])
 
-	# last line has to be written like this because the lengths otherwise do not match exactly and cause an error (splits do not overlap by function)
+		# get maximum token count in sentence
+		print("Finding longest items...")
+		longest_source = 0
+		longest_target = 0
+		for entry in dataset_raw:
+			encoded_source = tokenizer_source.encode(entry['translation'][config['lang_source']])
+			encoded_target = tokenizer_target.encode(entry['translation'][config['lang_target']])
+			longest_source = max(longest_source, len(encoded_source.ids))
+			longest_target = max(longest_target, len(encoded_target.ids))
+		print(f"Longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
+
+		# last line has to be written like this because the lengths otherwise do not match exactly and cause an error (splits do not overlap by function)
+		print("Splitting dataset...")
 		train_ds_size = int(config['TRAIN_SIZE'] * len(dataset_raw))  
 		validation_ds_size = int(config['VALIDATION_SIZE'] * len(dataset_raw))  
 		test_ds_size = len(dataset_raw) - train_ds_size - validation_ds_size  
 
-	# splitting into train/val/test datasets
+		# splitting into train/val/test datasets
 		train_ds_raw, validation_ds_raw, test_ds_raw = random_split(dataset_raw, [train_ds_size, validation_ds_size, test_ds_size])
 
-	# create dataset instances and return
+		# create dataset instances and return
 		train_ds = TranslationDataset(train_ds_raw, config, tokenizer_source, tokenizer_target)
 		validation_ds = TranslationDataset(validation_ds_raw, config, tokenizer_source, tokenizer_target)
 		test_ds = TranslationDataset(test_ds_raw, config, tokenizer_source, tokenizer_target)
@@ -69,7 +83,7 @@ class DataSetLoader():
 			tokenizer = Tokenizer(WordLevel(unk_token='<U>'))
 			tokenizer.pre_tokenizer = Whitespace()
 			trainer = WordLevelTrainer(special_tokens = ['<U>', '<S>', '<E>', '<P>']) # <U> = unknown words, <S> = start of sentence, <E> = end of sentence, <P> = padding to fill spaces
-			tokenizer.train_from_iterator(DataLoader.get_sentences(dataset, language), trainer = trainer)
+			tokenizer.train_from_iterator(DataSetLoader.get_sentences(dataset, language), trainer = trainer)
 			tokenizer.save(path=str(file), pretty=True)
 			return tokenizer
 
@@ -111,7 +125,9 @@ class Training():
 
 		# get dataset
 		print("Loading dataset...")
-		self.train_ds, self.validation_ds, self.test_ds, self.tokenizer_source, self.tokenizer_target = DataSetLoader.get_dataset(get_config())
+		self.train_ds, self.validation_ds, self.test_ds, self.tokenizer_source, self.tokenizer_target = DataSetLoader.get_dataset(self.config)
+
+		print(f"Maximum token length found: {self.max_tokens}")
 
 		# data points printed are the amount of sentence pairs
 		print(f"Train dataset size: {len(self.train_ds)}")
@@ -149,6 +165,7 @@ class Training():
 		print(f"Starting training at epoch {self.epoch}")
 
 		while self.epoch < self.epochs:
+			print(f"--- Epoch {self.epoch} ---")
 			self.training_loop()
 			self.epoch += 1
 
@@ -180,7 +197,7 @@ class Training():
 
 			# loss
 			loss = self.loss_function(projected.view(-1, self.tokenizer_target.get_vocab_size()), label.view(-1))
-			print(loss)
+			print(f"Loss: {loss}")
 
 			# backpropagation
 			loss.backward()
@@ -192,6 +209,7 @@ class Training():
 			self.global_step += 1
 
 		# save iteration
+		print('Saving state...')
 		filename = self.checkpoint_folder / Path(f"{self.epoch:02d}")
 		torch.save({
 			'epoch': self.epoch,
@@ -199,6 +217,8 @@ class Training():
 			'model_states': self.model.state_dict(),
 			'optimizer_state': self.optimizer.state_dict(),
 		}, filename)
+		print('Finished saving state!')
+		raise ValueError("YAY")
 
 
 trainer = Training(get_config())
