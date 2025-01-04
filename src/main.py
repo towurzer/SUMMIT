@@ -7,4 +7,5 @@ torch.mean(torch.zeros(4))
 print(torch.zeros(4))
 print(torch.mean(torch.zeros(4)))
 print(type(pd.DataFrame()))
-print("hilfe")
+
+print(f'has cuda? {torch.cuda.is_available()}')
