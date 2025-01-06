@@ -152,22 +152,99 @@ class Training():
 		print(self.model)
 
 
-	def train_model(self, start_epoch = 0):
+	def train_model(self):
 		self.epoch = 0
 		self.global_step = 0
 
 		self.loss_function = nn.CrossEntropyLoss(ignore_index=self.tokenizer_source.token_to_id('<P>'), label_smoothing=0.1).to(self.device)
 
-		if start_epoch > 0:
-			# TODO load existing state if epoch > 0
-			pass
+		# check for existing training state (finished epochs)
+		print("Looking for old training states...")
+		old_train_files = list(Path(self.checkpoint_folder).glob('*'))
+		if len(old_train_files) > 0:
+			old_train_files.sort(reverse=True)
+			old_train_filename = old_train_files[0]
+			print(f"Found latest model at: {old_train_filename}")
 		
-		print(f"Starting training at epoch {self.epoch}")
+			state = torch.load(old_train_filename)
+			self.model.load_state_dict(state['model_states'])
+			self.optimizer.load_state_dict(state['optimizer_state'])
+			self.global_step = state['global_step']
+			self.epoch = state['epoch'] + 1 #to start at next epoch
 
+			print(f"Successfully loaded existing state, now starting at epoch {self.epoch}")
+
+		# starting training
+		print(f"Starting training at epoch {self.epoch}")
 		while self.epoch < self.epochs:
 			print(f"--- Epoch {self.epoch} ---")
-			self.training_loop()
-			self.epoch += 1
+			#self.training_loop()
+			self.validation()
+			#self.epoch += 1
+
+	def validation(self):
+		s_token = self.tokenizer_target.token_to_id("<S>")
+		e_token = self.tokenizer_target.token_to_id("<E>")
+
+		with torch.no_grad():
+			self.model.eval()
+			repeats = 3
+			counter = 0
+			texts_source_lang = []
+			texts_target_lang = []
+			texts_predictions = []
+
+			for batch in self.validation_dataloader:
+				if counter >= repeats: break
+				counter += 1
+
+				to_encoder = batch['to_encoder'].to(self.device)
+				to_decoder = batch['to_decoder'].to(self.device)
+				mask_encoder = batch['mask_encoder'].to(self.device)
+				#mask_decoder = batch['mask_decoder'].to(self.device)
+				label = batch['label'].to(self.device)
+
+				text_source = batch['text_source']
+				text_target = batch['text_target']
+
+				if to_encoder.size(0) > 1: raise ValueError("For evaluation dimension must be 1!")
+
+				# decode
+				encoded = self.model.encode(to_encoder, mask_encoder)
+				decode = decode = torch.empty(1,1).fill_(s_token).type_as(to_encoder).to(self.device)
+
+				for iteration in range(0, self.max_tokens):
+					mask_decoder = TranslationDataset.triangular_mask(to_decoder.size(1)).type_as(mask_encoder).to(self.device)
+					
+					# get output
+					output = self.model.decode(encoded, mask_encoder, decode, mask_decoder)
+
+					p = self.model.project(output[:, -1])
+					_, most_likely = torch.max(p, dim=1)
+
+					if most_likely == e_token: break # we reached the end
+					
+					# next run with old content to decode + most likely token
+					to_decoder = torch.cat(
+						[
+							to_decoder, #last input
+							torch.empty(1,1).type_as(to_encoder).fill_(most_likely.item()).to(self.device)
+						], dim=1
+					)
+				
+				# get the sentences back out from the tokens
+				estimated = self.tokenizer_target.decode(to_decoder.squeeze(0).detach().cpu().numpy())
+
+				# add to lists
+				texts_source_lang.append(text_source)
+				texts_target_lang.append(text_target)
+				texts_predictions.append(estimated)
+
+				# print for debug
+				print(f"Source: {text_source}")
+				print(f"Target: {text_target}")
+				print(f"Predict: {estimated}")
+
 
 
 	def training_loop(self):
@@ -218,8 +295,8 @@ class Training():
 			'optimizer_state': self.optimizer.state_dict(),
 		}, filename)
 		print('Finished saving state!')
-		raise ValueError("YAY")
+
 
 
 trainer = Training(get_config())
-trainer.train_model(0)
+trainer.train_model()
