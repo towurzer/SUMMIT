@@ -750,7 +750,7 @@ class ProjectionLayer(nn.Module, ABC):
         raise self.InterfaceException("Please use a concrete implementation for your model.")
 
 
-class OutputProjectionLayerForNLLLoss(nn.Module, ProjectionLayer):
+class OutputProjectionLayerForNLLLoss(ProjectionLayer):
     """
     Combines a linear layer and log-softmax to produce probabilities over the vocabulary.
     ((batch_size, sequence_length, features), (batch_size, sequence_length, vocab_size))
@@ -784,7 +784,7 @@ class OutputProjectionLayerForNLLLoss(nn.Module, ProjectionLayer):
         return torch.log_softmax(linear_output, dim=-1)
 
 
-class OutputProjectionLayerForCrossEntrpyLoss(nn.Module, ProjectionLayer):
+class OutputProjectionLayerForCrossEntrpyLoss(ProjectionLayer):
     """
     Projection Layer that only consists of a linear layer to produce an output over the vocabulary.
     ((batch_size, sequence_length, features), (batch_size, sequence_length, vocab_size))
