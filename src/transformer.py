@@ -766,7 +766,12 @@ class OutputProjectionLayerForNLLLoss(ProjectionLayer):
             model_dimensions (int): The dimensionality of the output from the decoder layers.
             vocab_size (int): The size of the output vocabulary.
         """
-        super().__init__()
+        # throws custom InterfaceException, but this class is a valid class and not a mock-interface,
+        # shouldn't throw an exception
+        try:
+            super().__init__(model_dimensions, vocab_size)
+        except ProjectionLayer.InterfaceException:
+            pass
         self.linear_layer = nn.Linear(model_dimensions, vocab_size)
 
     def forward(self, decoder_output):
@@ -800,7 +805,12 @@ class OutputProjectionLayerForCrossEntrpyLoss(ProjectionLayer):
             model_dimensions (int): The dimensionality of the output from the decoder layers.
             vocab_size (int): The size of the output vocabulary.
         """
-        super().__init__()
+        # throws custom InterfaceException, but this class is a valid class and not a mock-interface,
+        # shouldn't throw an exception
+        try:
+            super().__init__(model_dimensions, vocab_size)
+        except ProjectionLayer.InterfaceException:
+            pass
         self.linear_layer = nn.Linear(model_dimensions, vocab_size)
 
     def forward(self, decoder_output):
