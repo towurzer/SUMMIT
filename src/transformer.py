@@ -221,9 +221,9 @@ class MultiHeadAttentionSegment(nn.Module):
 
         attention_scores = attention_scores / math.sqrt(dimension_per_head)  # scaled attention scores
 
-        if mask is not None:  # masked attention scores
+        if mask is not None:
             # if mask = 0 -> value = -infinity (around -2^31) so that softmax excludes them
-            attention_scores.masked_fill(mask == 0, -1e9)
+            attention_scores.masked_fill_(mask == 0, -1e9)
 
         # Apply softmax to convert attention scores into probabilities
         attention_scores = attention_scores.softmax(dim=-1)
@@ -343,7 +343,7 @@ class LayerNormalization(nn.Module):
 
         # Normalize the input tensor: (x - mean) / (std + epsilon)
         # Epsilon ensures numerical stability to prevent division by zero
-        x_dash = (x - mean) / (standard_deviation + self.eps) + self.bias
+        x_dash = (x - mean) / (standard_deviation + self.epsilon)
 
         # Scale shift and return
         return self.gamma * x_dash + self.bias
