@@ -178,9 +178,9 @@ class Training():
 		print(f"Starting training at epoch {self.epoch}")
 		while self.epoch < self.epochs:
 			print(f"--- Epoch {self.epoch} ---")
-			#self.training_loop()
+			self.training_loop()
 			self.validation()
-			#self.epoch += 1
+			self.epoch += 1
 
 
 	def training_loop(self):
