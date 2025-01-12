@@ -178,9 +178,9 @@ class Training():
 		print(f"Starting training at epoch {self.epoch}")
 		while self.epoch < self.epochs:
 			print(f"--- Epoch {self.epoch} ---")
-			self.training_loop()
+			#self.training_loop()
 			self.validation()
-			self.epoch += 1
+			#self.epoch += 1
 
 
 	def training_loop(self):
@@ -261,13 +261,13 @@ class Training():
 
 				# decode
 				encoded = self.model.encode(to_encoder, mask_encoder)
-				to_decode = torch.empty(1,1).fill_(s_token).type_as(to_encoder).to(self.device)
+				to_decoder = torch.empty(1,1).fill_(s_token).type_as(to_encoder).to(self.device)
 
 				for iteration in range(0, self.max_tokens):
-					mask_decoder = TranslationDataset.triangular_mask(to_decode.size(1)).type_as(mask_encoder).to(self.device)
+					mask_decoder = TranslationDataset.triangular_mask(to_decoder.size(1)).type_as(mask_encoder).to(self.device)
 					
 					# get output
-					output = self.model.decode(encoded, mask_encoder, to_decode, mask_decoder)
+					output = self.model.decode(encoded, mask_encoder, to_decoder, mask_decoder)
 
 					p = self.model.project(output[:, -1])
 					_, most_likely = torch.max(p, dim=1)
@@ -275,15 +275,15 @@ class Training():
 					if most_likely == e_token: break # we reached the end
 					
 					# next run with old content to decode + most likely token
-					to_decode = torch.cat(
+					to_decoder = torch.cat(
 						[
-							to_decode, #last input
+							to_decoder, #last input
 							torch.empty(1,1).type_as(to_encoder).fill_(most_likely.item()).to(self.device)
 						], dim=1
 					)
 				
 				# get the sentences back out from the tokens
-				estimated = self.tokenizer_target.decode(to_decode.squeeze(0).detach().cpu().numpy())
+				estimated = self.tokenizer_target.decode(to_decoder.squeeze(0).detach().cpu().numpy())
 
 				# add to lists
 				texts_source_lang.append(text_source)
@@ -294,6 +294,7 @@ class Training():
 				print(f"Source: {text_source}")
 				print(f"Target: {text_target}")
 				print(f"Predict: {estimated}")
+			raise ValueError("AAAAA")
 
 
 trainer = Training(get_config())

@@ -86,9 +86,8 @@ class TranslationDataset(Dataset):
 			'label': label,
 			'text_source': text_source,
 			'text_target': text_target,
-			# ????? no idea how they work
-			'mask_encoder': to_encoder.unsqueeze(0).unsqueeze(0).int(),
-			'mask_decoder': to_decoder.unsqueeze(0).int() & mask,
+			'mask_encoder': (to_encoder != self.p_token).unsqueeze(0).unsqueeze(0).int(),
+			'mask_decoder': (to_decoder != self.p_token).unsqueeze(0).int() & mask,
 		}
 
 		#return entry
