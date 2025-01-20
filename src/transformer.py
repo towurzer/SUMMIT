@@ -21,11 +21,11 @@ class InputEmbeddings(nn.Module):
 
 		The output will be a tensor of shape (2, 3, 4):
 			tensor([[[ 0.25, -0.31,  0.13,  0.08],
-				 [ 0.19,  0.01, -0.45,  0.27],
-				 [ 0.05, -0.12,  0.09,  0.41]],
+				[ 0.19,  0.01, -0.45,  0.27],
+				[ 0.05, -0.12,  0.09,  0.41]],
 				[[-0.34,  0.22, -0.18,  0.04],
-				 [ 0.11, -0.08,  0.39, -0.27],
-				 [-0.20,  0.14,  0.07, -0.03]]]) * sqrt(4)
+				[ 0.11, -0.08,  0.39, -0.27],
+				[-0.20,  0.14,  0.07, -0.03]]]) * sqrt(4)
 	"""
 
 	def __init__(self, model_dimensions: int, vocab_size: int):
@@ -56,10 +56,12 @@ class InputEmbeddings(nn.Module):
 			(where model_dimensions is the size of the embedding vectors.)
 
 		Note:
-			- The embeddings are scaled by sqrt(model_dimensions) to normalize their
-			  magnitudes. This is to ensure stable gradients and balanced contributions
-			  of embeddings and positional encodings.
+			- To stabilize training, the Transformer paper suggests scaling the embeddings by sqrt(dmodel)
+			This ensures that the variance of the embeddings remains consistent as the model size increases.
+			It also ensures that the embeddings have the same magnitude as the attention weights,
+			this improves convergence during training.
 		"""
+		# Multiply by sqrt(d_model) to scale the embeddings according to the paper
 		return self.embedding(input_tokens) * math.sqrt(self.model_dimensions)
 
 
@@ -104,7 +106,7 @@ class PositionalEncodings(nn.Module):
 		i = torch.arange(0, model_dimensions, 2, dtype=torch.float)  # Indices for even model_dimensions
 
 		# divisor = torch.pow(10_000, 2 * i / model_dimensions)  # 10^(4^(2i/d))
-		# Use numerically stable logarithmic formula to avoid large number problems instead
+		# Use numerically stable logarithmic formula
 		log_divisor = torch.log(torch.tensor(10_000)) * (2 * i / model_dimensions)
 		divisor = torch.exp(log_divisor)
 
@@ -117,6 +119,7 @@ class PositionalEncodings(nn.Module):
 		positional_encodings = positional_encodings.unsqueeze(0)
 
 		# Register the positional encodings as a buffer (not a learnable parameter)
+		# save the positional encoding, so we are able to reuse it
 		self.register_buffer("positional_encodings", positional_encodings)
 
 	def forward(self, input_embeddings):
@@ -143,7 +146,7 @@ class PositionalEncodings(nn.Module):
 		# Add the positional encodings to the input embeddings
 		input_embeddings = input_embeddings + positional_encodings_for_input
 
-		# Apply dropout
+		# Apply dropout and return
 		return self.dropout(input_embeddings)
 
 
@@ -160,6 +163,14 @@ class MultiHeadAttentionSegment(nn.Module):
 		combined through attention weights computed using dot-product attention. The results
 		are concatenated and transformed back using another matrix multiplication with the weight Matrix W_o,
 		to get a matrix back, that has the same format as the one given as an input
+
+		Note:
+			- Q = Query matrix (represents the "question" for each input)
+			- K= Key matrix (represents the "reference" for comparison)
+			- V = Value matrix (data to be combined based on attention weights)
+			- d_k = Dimensionality of the key vectors
+			- Dot Product (QKT) = Similarity score between Query and Key
+			- softmax = Converts scores to probabilities for weighting
 		"""
 
 	def __init__(self, model_dimensions: int, head_count: int, dropout: float):
@@ -177,7 +188,7 @@ class MultiHeadAttentionSegment(nn.Module):
 		self.head_count = head_count
 		assert model_dimensions % head_count == 0, "ERROR!: dimension of model are not divisible by number of heads"
 
-		# Compute the dimension of each attention head
+		# Dimension of vector seen by each head
 		self.dimension_per_head = model_dimensions // head_count
 
 		# Define linear transformations for query, key, value, and output projection
@@ -195,6 +206,7 @@ class MultiHeadAttentionSegment(nn.Module):
 	def calculate_attention(query, key, value, mask, dropout: nn.Dropout):
 		"""
 		Compute scaled dot-product attention.
+		Attention(Q, K, V) = (Q*Transpose(K)) / (sqrt(dimensions_per_head))*V
 
 		Args:
 			query (Tensor): Query tensor of shape (batch_size, head_count, seq_len, dim_per_head).
@@ -210,11 +222,13 @@ class MultiHeadAttentionSegment(nn.Module):
 		Note:
 			Note:
 			- Masking is mostly applied in the decoder, where it ensures that a token can only attend to itself
-			  and previous tokens during generation.
+			and previous tokens during generation.
 			- In the encoder, masking is generally limited to padding masks to handle variable-length input sequences.
 			- for further explanation of mask look in the encoder and decoder block - docstring
 		"""
-		dimension_per_head = query.shape[-1]
+		dimension_per_head = query.shape[-1]  # is query because will be reused in decoder,
+		# in encoder could be also a different one
+		# query is (batch_size, head_count, seq_len, dim_per_head). So dim_per_head is the last element of the Tensor.
 
 		key = key.transpose(-2, -1)  # Shape: [batch_size, head_count, dim_per_head, seq_len]
 		attention_scores = (query @ key)  # Shape: [batch_size, head_count, seq_len, seq_len]
@@ -246,7 +260,7 @@ class MultiHeadAttentionSegment(nn.Module):
 			Tensor: Transformed tensor of shape [batch_size, head_count, seq_len, dim_per_head].
 		"""
 		head_to_split = head_to_split.view(head_to_split.shape[0], head_to_split.shape[1],
-										   self.head_count, self.dimension_per_head)
+		                                   self.head_count, self.dimension_per_head)
 		# Transpose to bring the head dimension forward
 		head_to_split = head_to_split.transpose(1, 2)  # Shape: [batch_size, head_count, seq_len, dim_per_head]
 		return head_to_split
@@ -263,6 +277,7 @@ class MultiHeadAttentionSegment(nn.Module):
 
 		Returns:
 			Tensor: Output tensor of shape [batch_size, seq_len, model_dimensions].
+			self attended -> (Embedding (Meaning) + Position (Context) + Attention(Relationship with other words))
 		"""
 		# Transform input embeddings into queries, keys, and values
 		# Shape: [batch_size, seq_len, model_dimensions]
@@ -271,7 +286,8 @@ class MultiHeadAttentionSegment(nn.Module):
 		value = self.w_v(v)
 
 		# Split queries, keys, and values into multiple heads for parallel computation
-		# and allowing focus on different aspects of the input.
+		# and allowing focus on different aspects of the input. each head h will see different parts of the embeddings
+		# for the same sentence.
 		query = self.split_heads(query)
 		key = self.split_heads(key)
 		value = self.split_heads(value)
@@ -333,8 +349,7 @@ class LayerNormalization(nn.Module):
 				after applying normalization and affine transformation.
 
 		Note:
-			- used the standard deviation instead of the root of the variance since I wasn't sure
-			whether I should use a biased or unbiased variance, and the std is äquivalent the root of the std.
+			- used the standard deviation instead of the root of the variance the std is äquivalent the root of the std.
 			And since epsilon is << the root of var+epsilon is not that far off the std + epsilon
 		"""
 		# Calculate the mean of the input tensor along the feature dimension (dim=-1) and keeps the dimensions intact
@@ -438,6 +453,7 @@ class AddAndNormLayer(nn.Module):
 		Returns:
 			Tensor: Output tensor of shape (batch_size, sequence_length, features).
 		"""
+		# return residual + self.dropout(sublayer(self.norm(residual))) # Course formula(20.01.25), ours should also work
 		sublayer_output = sublayer_function(residual)  # compute sublayer
 		sublayer_output = self.dropout(sublayer_output)
 		residual_added_output = residual + sublayer_output  # add ...
@@ -446,33 +462,33 @@ class AddAndNormLayer(nn.Module):
 
 class EncoderBlock(nn.Module):
 	"""
-	   EncoderBlock module
-	   ((batch_size, sequence_length, features) -> (batch_size, sequence_length, features))
+	EncoderBlock module
+	((batch_size, sequence_length, features) -> (batch_size, sequence_length, features))
 
-	   An Encoder Block consists of two sub-layers:
-	   1. A multi-head self-attention mechanism.
-	   2. A position-wise feed-forward network.
+	An Encoder Block consists of two sub-layers:
+		1. A multi-head self-attention mechanism.
+		2. A position-wise feed-forward network.
 
-	   Each sublayer is wrapped with an addition and normalization block,
-	   addressing vanishing gradients and stabilize training.
-	   """
+	Each sublayer is wrapped with an addition and normalization block,
+	addressing vanishing gradients and stabilize training.
+	"""
 
 	def __init__(self, model_dimensions: int, self_attention_layer: MultiHeadAttentionSegment,
-				 feed_forward_block: FeedForwardLayer, dropout: float):
+	             feed_forward_layer: FeedForwardLayer, dropout: float):
 		"""
 		Initialize the EncoderBlock module.
 
 		Args:
 			model_dimensions (int): Dimensionality of the input and output features.
 			self_attention_layer (MultiHeadAttentionSegment): Multi-head self-attention mechanism.
-			feed_forward_block (FeedForwardLayer): Position-wise feed-forward network.
+			feed_forward_layer (FeedForwardLayer): Position-wise feed-forward network.
 			dropout (float): Dropout probability applied in the AddAndNormLayer.
 		"""
 		super().__init__()
 
 		# Multi-head self-attention and feed-forward layers
 		self.self_attention_layer = self_attention_layer
-		self.feed_forward_block = feed_forward_block
+		self.feed_forward_layer = feed_forward_layer
 
 		# Add and Normalize layers for each sublayer
 		self.add_and_norm_layers = nn.ModuleList(
@@ -510,7 +526,7 @@ class EncoderBlock(nn.Module):
 
 		# the second addition and normalization layer adds
 		# the output of the first add and norm layer with the output of the feed forward layer
-		residual_input = self.add_and_norm_layers[1](residual_input, self.feed_forward_block)
+		residual_input = self.add_and_norm_layers[1](residual_input, self.feed_forward_layer)
 		return residual_input
 
 
@@ -524,8 +540,8 @@ class Encoder(nn.Module):
 	"""
 
 	def __init__(self, model_dimensions: int, number_of_encoder_and_decoder_blocks: int,
-				 number_of_heads_in_multi_head_attention: int, feed_forward_hidden_layer_dimensions: int,
-				 dropout: float):
+	             number_of_heads_in_multi_head_attention: int, feed_forward_hidden_layer_dimensions: int,
+	             dropout: float):
 		"""
 		Initialize the Encoder module.
 
@@ -584,12 +600,12 @@ class DecoderBlock(nn.Module):
 	"""
 
 	def __init__(self,
-				 model_dimensions: int,
-				 self_attention_layer: MultiHeadAttentionSegment,
-				 cross_attention_layer: MultiHeadAttentionSegment,
-				 feed_forward_layer: FeedForwardLayer,
-				 dropout: float
-				 ):
+	             model_dimensions: int,
+	             self_attention_layer: MultiHeadAttentionSegment,
+	             cross_attention_layer: MultiHeadAttentionSegment,
+	             feed_forward_layer: FeedForwardLayer,
+	             dropout: float
+	             ):
 		"""
 		Initialize the DecoderBlock.
 
@@ -661,9 +677,10 @@ class Decoder(nn.Module):
 	The Decoder processes the input tensor through a series of decoder blocks,
 	each containing self-attention, cross_attention and feed-forward sub-layers.
 	"""
+
 	def __init__(self, model_dimensions: int, number_of_encoder_and_decoder_blocks: int,
-				 number_of_heads_in_multi_head_attention: int, feed_forward_hidden_layer_dimensions: int,
-				 dropout: float):
+	             number_of_heads_in_multi_head_attention: int, feed_forward_hidden_layer_dimensions: int,
+	             dropout: float):
 		"""
 		Initialize the Decoder module.
 
@@ -688,7 +705,7 @@ class Decoder(nn.Module):
 			)
 			feed_forward_layer = FeedForwardLayer(model_dimensions, feed_forward_hidden_layer_dimensions, dropout)
 			decoder_block = DecoderBlock(model_dimensions, decoder_self_attention_layer,
-										 decoder_cross_attention_layer, feed_forward_layer, dropout)
+			                             decoder_cross_attention_layer, feed_forward_layer, dropout)
 			decoder_blocks.append(decoder_block)
 
 		self.decoder_module_list = nn.ModuleList(decoder_blocks)
@@ -740,14 +757,14 @@ class ProjectionLayer(nn.Module, ABC):
 		self.model_dimensions = model_dimensions
 		self.vocab_size = vocab_size
 
-		# raise self.InterfaceException(
-		# 	"This class is supposed to act like an Interface, you can't have an instance of it."
-		# )
+	# raise self.InterfaceException(
+	# 	"This class is supposed to act like an Interface, you can't have an instance of it."
+	# )
 
 	@abstractmethod
 	def forward(self, x):
 		"""Perform a forward pass (to be implemented by subclasses)."""
-		# raise self.InterfaceException("Please use a concrete implementation for your model.")
+	# raise self.InterfaceException("Please use a concrete implementation for your model.")
 
 
 class OutputProjectionLayerForNLLLoss(ProjectionLayer):
@@ -841,14 +858,14 @@ class Transformer(nn.Module):
 	"""
 
 	def __init__(self,
-				 encoder: Encoder,
-				 decoder: Decoder,
-				 source_embedding_layer: InputEmbeddings,
-				 target_embedding_layer: InputEmbeddings,
-				 source_positional_encoding_layer: PositionalEncodings,
-				 target_positional_encoding_layer: PositionalEncodings,
-				 output_projection_layer: ProjectionLayer
-				 ):
+	             encoder: Encoder,
+	             decoder: Decoder,
+	             source_embedding_layer: InputEmbeddings,
+	             target_embedding_layer: InputEmbeddings,
+	             source_positional_encoding_layer: PositionalEncodings,
+	             target_positional_encoding_layer: PositionalEncodings,
+	             output_projection_layer: ProjectionLayer
+	             ):
 		"""
 		Initializes the Transformer model.
 
@@ -933,17 +950,18 @@ class TransformerBuilder:
 	Methods:
 		build_transformer: Builds and returns a fully initialized Transformer model with specified configurations.
 	"""
+
 	@staticmethod
 	def build_transformer(source_vocab_size: int, target_vocab_size: int,
-						  source_sequence_length: int, target_sequence_length: int,
-						  loss_function_is_NLLLoss: bool,
-						  loss_function_is_CrossEntropyLoss: bool,
-						  model_dimensions: int = 512,
-						  number_of_encoder_and_decoder_blocks: int = 6,
-						  number_of_heads_in_multi_head_attention: int = 8,
-						  dropout: float = 0.1,
-						  feed_forward_hidden_layer_dimensions: int = 2048,
-						  ) -> Transformer:
+	                      source_sequence_length: int, target_sequence_length: int,
+	                      loss_function_is_NLLLoss: bool,
+	                      loss_function_is_CrossEntropyLoss: bool,
+	                      model_dimensions: int = 512,
+	                      number_of_encoder_and_decoder_blocks: int = 6,
+	                      number_of_heads_in_multi_head_attention: int = 8,
+	                      dropout: float = 0.1,
+	                      feed_forward_hidden_layer_dimensions: int = 2048,
+	                      ) -> Transformer:
 		"""
 		Builds and returns a Transformer model.
 
@@ -983,9 +1001,9 @@ class TransformerBuilder:
 
 		# create encoder and decoder
 		encoder = Encoder(model_dimensions, number_of_encoder_and_decoder_blocks,
-						  number_of_heads_in_multi_head_attention, feed_forward_hidden_layer_dimensions, dropout)
+		                  number_of_heads_in_multi_head_attention, feed_forward_hidden_layer_dimensions, dropout)
 		decoder = Decoder(model_dimensions, number_of_encoder_and_decoder_blocks,
-						  number_of_heads_in_multi_head_attention, feed_forward_hidden_layer_dimensions, dropout)
+		                  number_of_heads_in_multi_head_attention, feed_forward_hidden_layer_dimensions, dropout)
 
 		# create projection layer
 		assert loss_function_is_CrossEntropyLoss != loss_function_is_NLLLoss, "select (only) one of the loss functions"
@@ -999,16 +1017,16 @@ class TransformerBuilder:
 
 		# create transformer
 		transformer = Transformer(encoder, decoder,
-								  source_embedding_layer, target_embedding_layer,
-								  source_positional_encoding_layer, target_positional_encoding_layer,
-								  projection_layer
-								  )
+		                          source_embedding_layer, target_embedding_layer,
+		                          source_positional_encoding_layer, target_positional_encoding_layer,
+		                          projection_layer
+		                          )
 
 		# initialize parameters
 		for parameter in transformer.parameters():
 			if parameter.dim() > 1:
 				nn.init.xavier_uniform_(parameter)
-				# Xavier-initialization is used to maintain a good variance balance in weights, since it led to good
-				# results in literature
+			# Xavier-initialization is used to maintain a good variance balance in weights, since it led to good
+			# results in literature
 
 		return transformer
