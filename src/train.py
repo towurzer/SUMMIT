@@ -10,6 +10,8 @@ from config import get_config
 
 from pathlib import Path
 
+from tqdm import tqdm
+
 # tokenizers (using package)
 from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
@@ -145,7 +147,7 @@ class Training():
 
 		print("Loading model")
 		# TODO: make use of different configurations ?????
-		self.model = TransformerBuilder.build_transformer(self.tokenizer_source.get_vocab_size(), self.tokenizer_target.get_vocab_size(), self.max_tokens, self.max_tokens, False, True).to(self.device)
+		self.model = TransformerBuilder.build_transformer(self.tokenizer_source.get_vocab_size(), self.tokenizer_target.get_vocab_size(), self.max_tokens, self.max_tokens, False, True, self.config["MODEL_DIMENSIONS"], self.config["NUM_ENCODER_BLOCKS"], self.config["NUM_HEADS"], self.config["DROPOUT"]).to(self.device)
 
 		self.optimizer = torch.optim.Adam(self.model.parameters(), self.learning_rate, eps = self.eps)
 
@@ -178,9 +180,9 @@ class Training():
 		print(f"Starting training at epoch {self.epoch}")
 		while self.epoch < self.epochs:
 			print(f"--- Epoch {self.epoch} ---")
-			#self.training_loop()
+			self.training_loop()
 			self.validation()
-			#self.epoch += 1
+			self.epoch += 1
 
 
 	def training_loop(self):
@@ -190,8 +192,11 @@ class Training():
 		# set model to training mode
 		self.model.train()
 
+		# iterator with tqdm progress bar
+		batch_iterator = tqdm(self.train_dataloader, desc=f"Processing Epoch {self.epoch:02d}")
+
 		# load batch
-		for batch in self.train_dataloader:
+		for batch in batch_iterator:
 			#print(batch)
 			to_encoder = batch['to_encoder'].to(self.device)
 			to_decoder = batch['to_decoder'].to(self.device)
@@ -210,7 +215,8 @@ class Training():
 
 			# loss
 			loss = self.loss_function(projected.view(-1, self.tokenizer_target.get_vocab_size()), label.view(-1))
-			print(f"Loss: {loss}")
+			batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
+			#print(f"Loss: {loss}")
 
 			# backpropagation
 			loss.backward()
@@ -294,7 +300,7 @@ class Training():
 				print(f"Source: {text_source}")
 				print(f"Target: {text_target}")
 				print(f"Predict: {estimated}")
-			raise ValueError("AAAAA")
+			#raise ValueError("AAAAA")
 
 
 trainer = Training(get_config())
