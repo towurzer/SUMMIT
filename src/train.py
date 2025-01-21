@@ -20,7 +20,7 @@ from tokenizers.pre_tokenizers import Whitespace
 from dataset import TranslationDataset
 
 # model
-from transformer import TransformerBuilder
+from transformer import build_transformer
 
 class DataSetLoader():
 
@@ -145,9 +145,15 @@ class Training():
 
 		print("Loading model")
 		# TODO: make use of different configurations ?????
-		self.model = TransformerBuilder.build_transformer(self.tokenizer_source.get_vocab_size(), self.tokenizer_target.get_vocab_size(), self.max_tokens, self.max_tokens, False, True).to(self.device)
+		#self.model = TransformerBuilder.build_transformer(self.tokenizer_source.get_vocab_size(), self.tokenizer_target.get_vocab_size(), self.max_tokens, self.max_tokens, False, True).to(self.device)
+
+		self.model = build_transformer(self.tokenizer_source.get_vocab_size(), self.tokenizer_target.get_vocab_size(), self.max_tokens, self.max_tokens)
+		self.model.to(self.device)
 
 		self.optimizer = torch.optim.Adam(self.model.parameters(), self.learning_rate, eps = self.eps)
+
+		for param in self.model.parameters():
+			print(type(param.data), param.size())
 
 		print(self.model)
 
@@ -178,9 +184,10 @@ class Training():
 		print(f"Starting training at epoch {self.epoch}")
 		while self.epoch < self.epochs:
 			print(f"--- Epoch {self.epoch} ---")
-			#self.training_loop()
+			self.training_loop()
 			self.validation()
-			#self.epoch += 1
+			self.epoch += 1
+		print(f"Done training!")
 
 
 	def training_loop(self):
@@ -291,10 +298,10 @@ class Training():
 				texts_predictions.append(estimated)
 
 				# print for debug
-				print(f"Source: {text_source}")
-				print(f"Target: {text_target}")
-				print(f"Predict: {estimated}")
-			raise ValueError("AAAAA")
+				print(f"\nSource: {text_source}")
+				print(f"\nTarget: {text_target}")
+				print(f"\nPredict: {estimated}")
+			# raise ValueError("AAAAA")
 
 
 trainer = Training(get_config())
