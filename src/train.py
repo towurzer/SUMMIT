@@ -42,13 +42,53 @@ class DataSetLoader():
 		print("Finding longest items...")
 		longest_source = 0
 		longest_target = 0
+
+		Threshold = 291
+		exclude_idx = []
+
+
+
 		for entry in dataset_raw:
 			encoded_source = tokenizer_source.encode(entry['translation'][config['lang_source']])
 			encoded_target = tokenizer_target.encode(entry['translation'][config['lang_target']])
+			
+			if(len(encoded_source.ids) >= Threshold or len(encoded_target.ids) >= Threshold):
+				exclude_idx.append(entry)
+
+			longest_source = max(longest_source, len(encoded_source.ids))
+			longest_target = max(longest_target, len(encoded_target.ids))	
+			
+
+		print(f"Longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
+		print(f"number of rows in raw dataset: {dataset_raw.num_rows}")
+		print(f"number of items above a certain number): {len(exclude_idx)}" )
+
+		dataset_raw2 = dataset_raw.filter(lambda example: example not in exclude_idx)
+		print(f"number of rows in raw dataset2: {dataset_raw2.num_rows}")
+
+
+		longest_source = 0
+		longest_target = 0
+
+		for entry in dataset_raw2:
+			encoded_source = tokenizer_source.encode(entry['translation'][config['lang_source']])
+			encoded_target = tokenizer_target.encode(entry['translation'][config['lang_target']])
+
+			longest_source = max(longest_source, len(encoded_source.ids))
+			longest_target = max(longest_target, len(encoded_target.ids))	
+
+		print(f"New longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
+
+
+		
+		for entry in dataset_raw:
+			encoded_source = tokenizer_source.encode(entry['translation'][config['lang_source']])
+			encoded_target = tokenizer_target.encode(entry['translation'][config['lang_target']])			
+			
 			longest_source = max(longest_source, len(encoded_source.ids))
 			longest_target = max(longest_target, len(encoded_target.ids))
 		print(f"Longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
-
+		
 		# last line has to be written like this because the lengths otherwise do not match exactly and cause an error (splits do not overlap by function)
 		print("Splitting dataset...")
 		train_ds_size = int(config['TRAIN_SIZE'] * len(dataset_raw))  
