@@ -43,8 +43,8 @@ class DataSetLoader():
 		longest_source = 0
 		longest_target = 0
 
-		Threshold = 291
-		exclude_idx = []
+		Threshold = 292
+		exclude = []
 
 
 
@@ -53,7 +53,7 @@ class DataSetLoader():
 			encoded_target = tokenizer_target.encode(entry['translation'][config['lang_target']])
 			
 			if(len(encoded_source.ids) >= Threshold or len(encoded_target.ids) >= Threshold):
-				exclude_idx.append(entry)
+				exclude.append(entry)
 
 			longest_source = max(longest_source, len(encoded_source.ids))
 			longest_target = max(longest_target, len(encoded_target.ids))	
@@ -61,9 +61,9 @@ class DataSetLoader():
 
 		print(f"Longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
 		print(f"number of rows in raw dataset: {dataset_raw.num_rows}")
-		print(f"number of items above a certain number): {len(exclude_idx)}" )
+		print(f"number of items above a certain number): {len(exclude)}" )
 
-		dataset_raw2 = dataset_raw.filter(lambda example: example not in exclude_idx)
+		dataset_raw2 = dataset_raw.filter(lambda example: example not in exclude)
 		print(f"number of rows in raw dataset2: {dataset_raw2.num_rows}")
 
 
