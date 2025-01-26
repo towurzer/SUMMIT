@@ -35,8 +35,8 @@ class DataSetLoader():
 
 		# tokenize
 		print("Creating tokenizers...")
-		tokenizer_source = DataSetLoader.__load_tokenizer(config, dataset_raw, config['lang_source'], download_mode="force_redownload")
-		tokenizer_target = DataSetLoader.__load_tokenizer(config, dataset_raw, config['lang_target'], download_mode="force_redownload")
+		tokenizer_source = DataSetLoader.__load_tokenizer(config, dataset_raw, config['lang_source'])
+		tokenizer_target = DataSetLoader.__load_tokenizer(config, dataset_raw, config['lang_target'])
 
 		# get maximum token count in sentence
 		print("Finding longest items...")

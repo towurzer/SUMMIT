@@ -21,3 +21,7 @@ def get_config():
 		"EPOCHS" : 5
 	}
 	
+def get_weights_file_path(config, epoch: str):
+    modelfolder = f"{config['datasource']}{config['model_folder']}"
+    model_filename = f"{config['model_basename']}{epoch}.pt"
+    return str(Path('.') / model_folder / model_filename)
