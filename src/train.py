@@ -342,7 +342,6 @@ class Training():
 				print(f"Predict: {estimated}")
 			#raise ValueError("AAAAA")
 
-
 trainer = Training(get_config())
 trainer.train_model()
 
