@@ -24,6 +24,8 @@ from dataset import TranslationDataset
 # model
 from transformer import TransformerBuilder
 
+print(Path('.').resolve())
+
 class DataSetLoader():
 
 	@staticmethod
@@ -105,7 +107,10 @@ class DataSetLoader():
 
 		return train_ds, validation_ds, test_ds, tokenizer_source, tokenizer_target
 	
-	
+	def get_model(config, vocab_source_len, vocab_target_len):
+		model = build_transformer(vocab_source_len, vocab_target_len, config["MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH"], config['MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH'], d_model=config['MODEL_DIMENSIONS'])
+		return model
+
 	def get_sentences(dataset, language):
 		for item in dataset: yield item['translation'][language]
 
