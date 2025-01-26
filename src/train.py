@@ -27,6 +27,8 @@ from model import Model
 
 print(Path('.').resolve())
 
+print(Path('.').resolve())
+
 class DataSetLoader():
 
 	@staticmethod
