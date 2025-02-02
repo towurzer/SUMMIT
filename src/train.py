@@ -45,10 +45,8 @@ class DataSetLoader():
 		longest_source = 0
 		longest_target = 0
 
-		Threshold = 292
+		Threshold = config['MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH']-2
 		exclude = []
-
-
 
 		for entry in dataset_raw:
 			encoded_source = tokenizer_source.encode(entry['translation'][config['lang_source']])
@@ -68,7 +66,6 @@ class DataSetLoader():
 		dataset_raw2 = dataset_raw.filter(lambda example: example not in exclude)
 		print(f"number of rows in raw dataset2: {dataset_raw2.num_rows}")
 
-
 		longest_source = 0
 		longest_target = 0
 
@@ -81,15 +78,9 @@ class DataSetLoader():
 
 		print(f"New longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
 
+		print(f"Dataset reduced by {dataset_raw.num_rows/dataset_raw2.num_rows*100}%")
 
-		
-		for entry in dataset_raw:
-			encoded_source = tokenizer_source.encode(entry['translation'][config['lang_source']])
-			encoded_target = tokenizer_target.encode(entry['translation'][config['lang_target']])			
-			
-			longest_source = max(longest_source, len(encoded_source.ids))
-			longest_target = max(longest_target, len(encoded_target.ids))
-		print(f"Longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
+		dataset_raw = dataset_raw2
 		
 		# last line has to be written like this because the lengths otherwise do not match exactly and cause an error (splits do not overlap by function)
 		print("Splitting dataset...")
@@ -108,7 +99,8 @@ class DataSetLoader():
 		return train_ds, validation_ds, test_ds, tokenizer_source, tokenizer_target
 	
 	def get_model(config, vocab_source_len, vocab_target_len):
-		model = build_transformer(vocab_source_len, vocab_target_len, config["MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH"], config['MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH'], d_model=config['MODEL_DIMENSIONS'])
+		model = build_transformer(vocab_source_len, vocab_target_len, config["MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH"], config
+		['MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH'], d_model=config['MODEL_DIMENSIONS'])
 		return model
 
 	def get_sentences(dataset, language):
