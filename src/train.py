@@ -24,6 +24,8 @@ from dataset import TranslationDataset
 # model
 from transformer import TransformerBuilder
 
+print(Path('.').resolve())
+
 class DataSetLoader():
 
 	@staticmethod
@@ -42,13 +44,44 @@ class DataSetLoader():
 		print("Finding longest items...")
 		longest_source = 0
 		longest_target = 0
+
+		Threshold = config['MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH']-2
+		exclude = []
+
 		for entry in dataset_raw:
 			encoded_source = tokenizer_source.encode(entry['translation'][config['lang_source']])
 			encoded_target = tokenizer_target.encode(entry['translation'][config['lang_target']])
-			longest_source = max(longest_source, len(encoded_source.ids))
-			longest_target = max(longest_target, len(encoded_target.ids))
-		print(f"Longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
+			
+			if(len(encoded_source.ids) >= Threshold or len(encoded_target.ids) >= Threshold):
+				exclude.append(entry)
 
+			longest_source = max(longest_source, len(encoded_source.ids))
+			longest_target = max(longest_target, len(encoded_target.ids))	
+			
+
+		print(f"Longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
+		print(f"number of rows in raw dataset: {dataset_raw.num_rows}")
+		print(f"number of items above a certain number): {len(exclude)}" )
+
+		dataset_raw_filtered = dataset_raw.filter(lambda example: example not in exclude)
+		print(f"number of rows in raw dataset2: {dataset_raw_filtered.num_rows}")
+
+		longest_source = 0
+		longest_target = 0
+
+		for entry in dataset_raw_filtered:
+			encoded_source = tokenizer_source.encode(entry['translation'][config['lang_source']])
+			encoded_target = tokenizer_target.encode(entry['translation'][config['lang_target']])
+
+			longest_source = max(longest_source, len(encoded_source.ids))
+			longest_target = max(longest_target, len(encoded_target.ids))	
+
+		print(f"New longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
+
+		print(f"Dataset reduced by {dataset_raw.num_rows/dataset_raw_filtered.num_rows*100}%")
+
+		dataset_raw = dataset_raw_filtered
+		
 		# last line has to be written like this because the lengths otherwise do not match exactly and cause an error (splits do not overlap by function)
 		print("Splitting dataset...")
 		train_ds_size = int(config['TRAIN_SIZE'] * len(dataset_raw))  
@@ -64,7 +97,6 @@ class DataSetLoader():
 		test_ds = TranslationDataset(test_ds_raw, config, tokenizer_source, tokenizer_target)
 
 		return train_ds, validation_ds, test_ds, tokenizer_source, tokenizer_target
-	
 	
 	def get_sentences(dataset, language):
 		for item in dataset: yield item['translation'][language]
@@ -191,6 +223,7 @@ class Training():
 
 		# set model to training mode
 		self.model.train()
+		
 
 		# iterator with tqdm progress bar
 		batch_iterator = tqdm(self.train_dataloader, desc=f"Processing Epoch {self.epoch:02d}")
@@ -302,6 +335,6 @@ class Training():
 				print(f"Predict: {estimated}")
 			#raise ValueError("AAAAA")
 
-
 trainer = Training(get_config())
 trainer.train_model()
+
