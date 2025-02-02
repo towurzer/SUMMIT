@@ -40,12 +40,8 @@ class TranslationDataset(Dataset):
 		encoded_source = self.tokenizer_source.encode(text_source).ids
 		encoded_target = self.tokenizer_target.encode(text_target).ids
 
-		#print(f"{text_source} => {encoded_source}")
-		#print(f"{text_target} => {encoded_target}")
-
 		# encoder => <S><source text tokens><E><P><P>...<P> (until total length is reached)
 		# decoder => <S><target text tokens><P><P>..<P> (until total length is reached)
-		# ????? apparently we don't need end tokens for the decoder??? That's something to clarify.
 
 		# check lengths first and throw error if too long
 		if len(encoded_source) - 2 > self.max_tokens or len(encoded_target) - 1> self.max_tokens:
@@ -89,8 +85,6 @@ class TranslationDataset(Dataset):
 			'mask_encoder': (to_encoder != self.p_token).unsqueeze(0).unsqueeze(0).int(),
 			'mask_decoder': (to_decoder != self.p_token).unsqueeze(0).int() & mask,
 		}
-
-		#return entry
 	
 	# creates a square matrix of given size that has True on the main diagonal and lower triangle and False on the others
 	def triangular_mask(size):
