@@ -315,3 +315,5 @@ class Training():
 				print(f"Target: {text_target}")
 				print(f"Predict: {estimated}")
 
+
+
