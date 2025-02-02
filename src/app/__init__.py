@@ -5,18 +5,17 @@ def create_app(config, model):
 
 	@app.route('/')
 	def index():
-		return f"Debug mode is {'on' if app.config["DEBUG"] else 'off'}"
+		return "Hello world! Use GET/POST /translate with parameter text!"
 
-	@app.route('/translate', methods=['GET'])
+	@app.route('/translate', methods=['GET', 'POST'])
 	def translate():
-		
 
 		source = request.args.get('text')
+		if source is None:
+			source = request.form.get('text')
 		
 		try:
-
-			translated = model.decode(config, source)
-
+			translated = model.decode(source)
 
 			return jsonify({"translated": f"\"{translated}\""})
 		except:

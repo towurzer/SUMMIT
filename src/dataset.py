@@ -1,20 +1,21 @@
 import torch
 import torch.nn
 from torch.utils.data import Dataset
+from config import Config
 
 # dataset for translation task
 class TranslationDataset(Dataset):
 	
-	def __init__(self, dataset, config, tokenizer_source, tokenizer_target):
+	def __init__(self, dataset, config:Config, tokenizer_source, tokenizer_target):
 		super()
 		self.dataset = dataset
 		self.config = config
 		self.tokenizer_source = tokenizer_source
 		self.tokenizer_target = tokenizer_target
 
-		self.language_source = config['lang_source']
-		self.language_target = config['lang_target']
-		self.max_tokens = config['MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH']
+		self.language_source = config.data_config['lang_source']
+		self.language_target = config.data_config['lang_target']
+		self.max_tokens = config.train_config['max_sentence_tokens']
 
 		self.s_token = torch.tensor([tokenizer_target.token_to_id("<S>")], dtype=torch.int64)
 		self.e_token = torch.tensor([tokenizer_target.token_to_id("<E>")], dtype=torch.int64)
