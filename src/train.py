@@ -47,27 +47,37 @@ class DataSetLoader():
 		longest_source = 0
 		longest_target = 0
 
-		Threshold = config['MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH']-2
+		threshold = config.train_config['max_sentence_tokens']-2
 		exclude = []
 
 		for entry in dataset_raw:
 			encoded_source = model.tokenizer_source.encode(entry['translation'][config.data_config['lang_source']])
 			encoded_target = model.tokenizer_target.encode(entry['translation'][config.data_config['lang_target']])
+
+			if(len(encoded_source.ids) >= threshold or len(encoded_target.ids) >= threshold):
+				exclude.append(entry)
+
 			longest_source = max(longest_source, len(encoded_source.ids))
 			longest_target = max(longest_target, len(encoded_target.ids))
 		print(f"Longest items found: {config.data_config['lang_source']}: {longest_source}, {config.data_config['lang_target']}: {longest_target}")
+
+		print(f"number of rows in raw dataset: {dataset_raw.num_rows}")
+		print(f"number of items above a certain number): {len(exclude)}" )
+
+		dataset_raw_filtered = dataset_raw.filter(lambda example: example not in exclude)
+		print(f"number of rows in raw dataset2: {dataset_raw_filtered.num_rows}")
 
 		longest_source = 0
 		longest_target = 0
 
 		for entry in dataset_raw_filtered:
-			encoded_source = tokenizer_source.encode(entry['translation'][config['lang_source']])
-			encoded_target = tokenizer_target.encode(entry['translation'][config['lang_target']])
+			encoded_source = model.tokenizer_source.encode(entry['translation'][config.data_config['lang_source']])
+			encoded_target = model.tokenizer_target.encode(entry['translation'][config.data_config['lang_target']])
 
 			longest_source = max(longest_source, len(encoded_source.ids))
 			longest_target = max(longest_target, len(encoded_target.ids))	
 
-		print(f"New longest items found: {config['lang_source']}: {longest_source}, {config['lang_target']}: {longest_target}")
+		print(f"New longest items found: {config.data_config['lang_source']}: {longest_source}, {config.data_config['lang_target']}: {longest_target}")
 
 		print(f"Dataset reduced by {dataset_raw.num_rows/dataset_raw_filtered.num_rows*100}%")
 
