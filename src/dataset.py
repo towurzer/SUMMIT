@@ -1,20 +1,21 @@
 import torch
 import torch.nn
 from torch.utils.data import Dataset
+from config import Config
 
 # dataset for translation task
 class TranslationDataset(Dataset):
 	
-	def __init__(self, dataset, config, tokenizer_source, tokenizer_target):
+	def __init__(self, dataset, config:Config, tokenizer_source, tokenizer_target):
 		super()
 		self.dataset = dataset
 		self.config = config
 		self.tokenizer_source = tokenizer_source
 		self.tokenizer_target = tokenizer_target
 
-		self.language_source = config['lang_source']
-		self.language_target = config['lang_target']
-		self.max_tokens = config['MAX_SUPPORTED_SENTENCE_TOKEN_LENGTH']
+		self.language_source = config.data_config['lang_source']
+		self.language_target = config.data_config['lang_target']
+		self.max_tokens = config.train_config['max_sentence_tokens']
 
 		self.s_token = torch.tensor([tokenizer_target.token_to_id("<S>")], dtype=torch.int64)
 		self.e_token = torch.tensor([tokenizer_target.token_to_id("<E>")], dtype=torch.int64)
@@ -40,12 +41,8 @@ class TranslationDataset(Dataset):
 		encoded_source = self.tokenizer_source.encode(text_source).ids
 		encoded_target = self.tokenizer_target.encode(text_target).ids
 
-		#print(f"{text_source} => {encoded_source}")
-		#print(f"{text_target} => {encoded_target}")
-
 		# encoder => <S><source text tokens><E><P><P>...<P> (until total length is reached)
 		# decoder => <S><target text tokens><P><P>..<P> (until total length is reached)
-		# ????? apparently we don't need end tokens for the decoder??? That's something to clarify.
 
 		# check lengths first and throw error if too long
 		if len(encoded_source) - 2 > self.max_tokens or len(encoded_target) - 1> self.max_tokens:
@@ -89,8 +86,6 @@ class TranslationDataset(Dataset):
 			'mask_encoder': (to_encoder != self.p_token).unsqueeze(0).unsqueeze(0).int(),
 			'mask_decoder': (to_decoder != self.p_token).unsqueeze(0).int() & mask,
 		}
-
-		#return entry
 	
 	# creates a square matrix of given size that has True on the main diagonal and lower triangle and False on the others
 	def triangular_mask(size):
