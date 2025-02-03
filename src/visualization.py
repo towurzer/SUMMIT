@@ -123,7 +123,6 @@ def attn_map(attn_type, layer, head, row_tokens, col_tokens, max_sentence_len):
         .interactive()
     )
 
-
 def get_all_attention_maps(attn_type: str, layers: list, heads: list, row_tokens: list, col_tokens, max_sentence_len: int):
     charts = []
     for layer in layers:
