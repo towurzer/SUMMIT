@@ -25,10 +25,6 @@ from dataset import TranslationDataset
 from transformer import TransformerBuilder
 from model import Model
 
-print(Path('.').resolve())
-
-print(Path('.').resolve())
-
 class DataSetLoader():
 
 	@staticmethod
