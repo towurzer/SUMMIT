@@ -25,8 +25,6 @@ from dataset import TranslationDataset
 from transformer import TransformerBuilder
 from model import Model
 
-print(Path('.').resolve())
-
 class DataSetLoader():
 
 	@staticmethod
@@ -280,14 +278,17 @@ class Training():
 				# decode
 				encoded = self.model.model.encode(to_encoder, mask_encoder)
 				to_decoder = torch.empty(1,1).fill_(s_token).type_as(to_encoder).to(self.model.config.device)
+				# Initializes tensor of shape (1,1), fills it with SOS tokens, sets it to be of the same type as to_encoder, gets it onto cuda
 
 				for iteration in range(0, self.max_tokens):
 					mask_decoder = TranslationDataset.triangular_mask(to_decoder.size(1)).type_as(mask_encoder).to(self.model.config.device)
-					
+					#Creates triangular matrix of initial size (1,1), this will increase with each iteration, makes sure it is of the same type, gets it onto cuda
+
 					# get output
 					output = self.model.model.decode(encoded, mask_encoder, to_decoder, mask_decoder)
 
 					p = self.model.model.project(output[:, -1])
+					#Extracts last predicted token and passes it through the projection layer, which maps the decoder output to logits over the vocabulary
 					_, most_likely = torch.max(p, dim=1)
 
 					if most_likely == e_token: break # we reached the end
@@ -312,4 +313,6 @@ class Training():
 				print(f"Source: {text_source}")
 				print(f"Target: {text_target}")
 				print(f"Predict: {estimated}")
+
+
 
