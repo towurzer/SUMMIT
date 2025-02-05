@@ -164,4 +164,6 @@ cython_debug/
 # training folder
 train/
 train.*
-opus_books/checkpoints/00
+
+# node modules
+node_modules/
