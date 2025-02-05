@@ -8,7 +8,7 @@ import pandas as pd
 
 from model import Model
 
-from app import create_app
+from web import create_web_api
 from train import Training
 
 print("=== SUMMIT ===")
@@ -45,5 +45,5 @@ else:
 	model = Model(config)
 	model.load_latest_model()
 
-	app = create_app(config, model)
-	app.run(debug=config.app_config["debug"], port=config.app_config["port"])
+	api = create_web_api(config, model)
+	api.run(debug=config.app_config["debug"], port=config.app_config["port"])

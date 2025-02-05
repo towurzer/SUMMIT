@@ -63,7 +63,7 @@ class DataSetLoader():
 		print(f"number of items above a certain number): {len(exclude)}" )
 
 		dataset_raw_filtered = dataset_raw.filter(lambda example: example not in exclude)
-		print(f"number of rows in raw dataset2: {dataset_raw_filtered.num_rows}")
+		print(f"number of rows in filtered raw dataset: {dataset_raw_filtered.num_rows}")
 
 		longest_source = 0
 		longest_target = 0
