@@ -2,6 +2,11 @@
 summit-web
 # Also no checkpoints
 train/opus_books/checkpoints
+# And git stuff
+.git
+__pychache__
+.idea
+.vscode
 
 # Config file is copied over seperately
 config.json
