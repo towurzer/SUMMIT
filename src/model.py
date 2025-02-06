@@ -13,14 +13,13 @@ from tokenizers.trainers import WordLevelTrainer
 from tokenizers.pre_tokenizers import Whitespace
 
 # dataset
-from config import Config
 from dataset import TranslationDataset
 
 # model
 from transformer import TransformerBuilder
 
 class Model():
-	def __init__(self, config:Config):
+	def __init__(self, config):
 		self.config = config
 
 	def create_model(self):
@@ -41,7 +40,7 @@ class Model():
 		model_path = self.config.get_latest_model_path()
 		if model_path is None: raise FileNotFoundError("No existing model found!")
 
-		state = torch.load(model_path, map_location=self.config.device)
+		state = torch.load(model_path)
 		self.model.load_state_dict(state['model_states'])
 
 	def save_current_model(self):
@@ -124,3 +123,4 @@ class Model():
 			print(f"Loading existing tokenizer file for language {language}...")
 			return Tokenizer.from_file(str(file)) #tokenizer already exists, just load
 		else: return None
+		

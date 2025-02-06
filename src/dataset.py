@@ -34,8 +34,8 @@ class TranslationDataset(Dataset):
 		# e.g. {'id': '15590', 'translation': {'de': '»Die arme, liebe Frau!', 'en': '"Poor little woman!'}}
 
 		# getting the individual texts
-		text_source = entry['translation'][self.language_source]
-		text_target = entry['translation'][self.language_target]
+		text_source = entry[self.language_source]
+		text_target = entry[self.language_target]
 
 		# encoding them using the dictionary
 		encoded_source = self.tokenizer_source.encode(text_source).ids

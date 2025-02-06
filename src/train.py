@@ -33,7 +33,9 @@ class DataSetLoader():
 		#split='train' is chosen because of errors occuring or the splits not being loaded when choosing another.
 		#('train' is 1m lines while test and val are 2k each) https://huggingface.co/datasets/Helsinki-NLP/opus-100/viewer/de-en/train
 		print("Loading raw dataset...")
-		dataset_raw = load_dataset(f"{config.data_config['datasource']}", f"{config.data_config['lang_source']}-{config.data_config['lang_target']}", split='train')
+		dataset_raw = load_dataset(f"{config.data_config['datasource']}", split='train')
+
+
 
 		# tokenize
 		print("Creating tokenizers...")
@@ -49,8 +51,8 @@ class DataSetLoader():
 		exclude = []
 
 		for entry in dataset_raw:
-			encoded_source = model.tokenizer_source.encode(entry['translation'][config.data_config['lang_source']])
-			encoded_target = model.tokenizer_target.encode(entry['translation'][config.data_config['lang_target']])
+			encoded_source = model.tokenizer_source.encode(entry[config.data_config['lang_source']])
+			encoded_target = model.tokenizer_target.encode(entry[config.data_config['lang_target']])
 
 			if(len(encoded_source.ids) >= threshold or len(encoded_target.ids) >= threshold):
 				exclude.append(entry)
@@ -69,8 +71,8 @@ class DataSetLoader():
 		longest_target = 0
 
 		for entry in dataset_raw_filtered:
-			encoded_source = model.tokenizer_source.encode(entry['translation'][config.data_config['lang_source']])
-			encoded_target = model.tokenizer_target.encode(entry['translation'][config.data_config['lang_target']])
+			encoded_source = model.tokenizer_source.encode(entry[config.data_config['lang_source']])
+			encoded_target = model.tokenizer_target.encode(entry[config.data_config['lang_target']])
 
 			longest_source = max(longest_source, len(encoded_source.ids))
 			longest_target = max(longest_target, len(encoded_target.ids))	
@@ -98,7 +100,7 @@ class DataSetLoader():
 		return train_ds, validation_ds, test_ds, model.tokenizer_source, model.tokenizer_target
 	
 	def get_sentences(dataset, language):
-		for item in dataset: yield item['translation'][language]
+		for item in dataset: yield item[language]
 
 	# loads tokenizer from file, if none is found, it makes a new one
 	def __load_tokenizer(model:Model, dataset, language):
@@ -268,7 +270,6 @@ class Training():
 				#to_decoder = batch['to_decoder'].to(self.model.config.device)
 				mask_encoder = batch['mask_encoder'].to(self.model.config.device)
 				#mask_decoder = batch['mask_decoder'].to(self.model.config.device)
-				label = batch['label'].to(self.model.config.device)
 
 				text_source = batch['text_source']
 				text_target = batch['text_target']

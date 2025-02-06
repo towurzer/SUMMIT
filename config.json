@@ -4,10 +4,9 @@
 		"sub_directory_tokenizer": "tokenize",
 		"sub_directory_checkpoints": "checkpoints",
 		"sub_directory_model": "model"
-
 	},
 	"data": {
-		"datasource": "opus_books",
+		"datasource": "enimai/MuST-C-de",
 		"lang_source": "de",
 		"lang_target": "en"
 	},
