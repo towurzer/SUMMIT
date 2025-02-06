@@ -4,8 +4,14 @@
 # Overview
 This git project consists of two parts, the python-based ML program with flask web-API and a Vue-based frontend.
 
+# Docker
+To just spin up the containers, it's required to have `docker` and `docker-compose` installed on your system. Launch the containers using:
+```
+docker compose up
+```
+
 # Prerequesites
-Install `git` and `git-lfs`. After checking out the code, run `git lfs fetch` and `git lfs pull` to download LFS files.
+Install `git` and `git-lfs`. After checking out the repository, run `git lfs fetch` and `git lfs pull` to download LFS files. There are no submodules to worry about.
 
 # Application
 Requirements:
@@ -13,14 +19,16 @@ Requirements:
   * To make life easier with parallel python installations, the use of either venv or [anaconda](https://anaconda.org/anaconda/python) is recommended. Make sure that `pip` is available and functioning.
 * Install `cuda` packages for your system if you have an Nvidia GPU.
 * Install pip packages:
-    ```
-    pip install -r requirements.txt
+    ```py
+    pip install -r requirements_cpu.txt # for CPU only
+    pip install -r requirements_cuda.txt # if CUDA is available on your system
     ```
     **Note for developers:**
     
-    If a new package is required or updates recommended, please create a new `requirements.txt` file using: `pip freeze > requirements.txt`
+    The `requirements.txt` file is used exclusively for building the docker image. Please do not use it.
+    If a new package is required or updates recommended, please create new `requirements.txt` files using: `pip freeze > requirements.txt`
 
-You can launch the model in evaluation mode using:
+You can launch the application in evaluation mode using:
 ```
 python src/main.py
 ```
@@ -34,6 +42,7 @@ To put the model into training mode, run the application using an argument:
 ```
 python src/main.py train
 ```
+**Note:** Training is 10+ times faster with a GPU
 
 # Website
 The simple website is built using [Vue.js](https://vuejs.org) and its server [Vite](https://vite.dev). Both can easily be installed using `bun` (see below).

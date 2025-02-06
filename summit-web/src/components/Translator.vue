@@ -24,11 +24,11 @@ const emit = defineEmits(['translate'])
 	<div class="container">
 		<div class="field-container">
 			<h1 class="green">{{ source }}</h1>
-			<input v-model="sourceText" placeholder="Test"></input>
+			<input v-model="sourceText" placeholder="Schreibe einen deutschen Satz..."></input>
 		</div>
 		<div class="field-container">
 			<h1 class="green">{{ target }}</h1>
-			<input :value="targetText" placeholder="AAA" disabled></input>
+			<input :value="targetText" placeholder="...to get its English translation here" disabled></input>
 		</div>
 		<button @click="emit('translate', sourceText)">Translate</button>
 	</div>
