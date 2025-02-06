@@ -3,7 +3,7 @@ from flask_cors import CORS
 
 def create_web_api(config, model):
 	api = Flask(__name__)
-	CORS(api, origins=["http://localhost:3457", "http://localhost:80"]) # CORS to make web app work
+	CORS(api, origins=["http://localhost:3457", "http://127.0.0.1:3457"]) # CORS to make web app work
 
 	@api.route('/')
 	def index():

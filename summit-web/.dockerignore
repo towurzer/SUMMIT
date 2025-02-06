@@ -1,0 +1,6 @@
+# node_modules install themselves
+node_modules
+# not needed stuff
+dist
+.vscode
+.editorconfig

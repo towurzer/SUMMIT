@@ -1,0 +1,15 @@
+services:
+  api:
+    image: summit-api
+    ports:
+      - "3456:3456"
+    networks:
+      - app-network
+  web:
+    image: summit-web
+    ports:
+      - "3457:3457"
+    networks:
+      - app-network
+networks:
+  app-network: {}

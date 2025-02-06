@@ -46,4 +46,4 @@ else:
 	model.load_latest_model()
 
 	api = create_web_api(config, model)
-	api.run(debug=config.app_config["debug"], port=config.app_config["port"])
+	api.run(debug=config.app_config["debug"], host=config.app_config["ip"], port=config.app_config["port"])

@@ -1,0 +1,12 @@
+# Don't want to copy over the web application into the python container
+summit-web
+# Also no checkpoints
+train/opus_books/checkpoints
+# And git stuff
+.git
+__pychache__
+.idea
+.vscode
+
+# Config file is copied over seperately
+config.json
