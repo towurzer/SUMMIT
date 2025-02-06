@@ -63,7 +63,6 @@ class TranslationDataset(Dataset):
 			torch.tensor(encoded_target, dtype=torch.int64),
 			torch.tensor([self.p_token] * num_padding_decoder, dtype=torch.int64)
 		])
-		# ????? this step I don't understand
 		label = torch.cat([
 			torch.tensor(encoded_target, dtype=torch.int64),
 			self.e_token,
