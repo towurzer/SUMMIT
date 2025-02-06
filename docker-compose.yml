@@ -1,12 +1,12 @@
 services:
   api:
-    image: summit-api
+    image: caverntwo/summit-api
     ports:
       - "3456:3456"
     networks:
       - app-network
   web:
-    image: summit-web
+    image: caverntwo/summit-web
     ports:
       - "3457:3457"
     networks:
